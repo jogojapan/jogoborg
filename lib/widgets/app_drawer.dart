@@ -80,19 +80,15 @@ class AppDrawer extends StatelessWidget {
             ),
           ),
           const Divider(),
-          Consumer<ThemeService>(
-            builder: (context, themeService, child) {
-              return ListTile(
-                leading: Icon(
-                  themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode,
-                ),
-                title: Text(
-                  themeService.isDarkMode ? 'Light Mode' : 'Dark Mode',
-                ),
-                onTap: () {
-                  themeService.toggleTheme();
-                },
-              );
+          ListTile(
+            leading: const Icon(Icons.palette),
+            title: const Text('Toggle Theme'),
+            onTap: () {
+              print('Theme toggle tapped');
+              final themeService = context.read<ThemeService>();
+              print('Current theme mode: ${themeService.themeMode}');
+              themeService.toggleTheme();
+              print('New theme mode: ${themeService.themeMode}');
             },
           ),
           ListTile(

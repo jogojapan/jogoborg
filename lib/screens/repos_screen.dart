@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/theme_service.dart';
 import '../widgets/app_drawer.dart';
-import '../widgets/jogoborg_app_bar.dart';
 
 class ReposScreen extends StatefulWidget {
   const ReposScreen({super.key});
@@ -49,15 +50,24 @@ class _ReposScreenState extends State<ReposScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: JogoborgAppBar(
-        title: 'Borg Repositories',
-        additionalActions: [
+      appBar: AppBar(
+        title: const Text('Borg Repositories'),
+        actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: () {
               setState(() => isLoading = true);
               _loadRepositories();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await context.read<AuthService>().logout();
+              if (context.mounted) {
+                context.go('/login');
+              }
             },
           ),
         ],

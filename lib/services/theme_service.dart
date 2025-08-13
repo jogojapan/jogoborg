@@ -20,21 +20,35 @@ class ThemeService extends ChangeNotifier {
       _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
       notifyListeners();
     } catch (e) {
+      print('Theme loading error: $e');
       // If loading fails, keep default light mode
     }
   }
 
-  Future<void> toggleTheme() async {
-    _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
-    
+  void toggleTheme() {
+    print('toggleTheme called, current mode: $_themeMode');
+    try {
+      _themeMode = _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+      print('New theme mode: $_themeMode');
+      
+      notifyListeners();
+      print('Theme listeners notified');
+      
+      // Save to preferences in background
+      _saveToPreferences();
+    } catch (e) {
+      print('Theme toggle error: $e');
+    }
+  }
+  
+  Future<void> _saveToPreferences() async {
     try {
       _prefs ??= await SharedPreferences.getInstance();
       await _prefs!.setBool(_themeKey, _themeMode == ThemeMode.dark);
+      print('Theme saved to preferences');
     } catch (e) {
-      // If saving fails, the theme will still work for this session
+      print('Theme save error: $e');
     }
-    
-    notifyListeners();
   }
 
   Future<void> setTheme(ThemeMode mode) async {
@@ -64,8 +78,9 @@ class ThemeService extends ChangeNotifier {
       foregroundColor: Colors.white,
       elevation: 2,
     ),
-    drawerTheme: const DrawerThemeData(
+    drawerTheme: DrawerThemeData(
       backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
     ),
     cardTheme: CardThemeData(
       elevation: 2,
@@ -99,6 +114,7 @@ class ThemeService extends ChangeNotifier {
     ),
     drawerTheme: DrawerThemeData(
       backgroundColor: Colors.grey[850],
+      surfaceTintColor: Colors.transparent,
     ),
     cardTheme: CardThemeData(
       elevation: 4,

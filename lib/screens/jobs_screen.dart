@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/theme_service.dart';
 import '../widgets/app_drawer.dart';
-import '../widgets/jogoborg_app_bar.dart';
 // import '../widgets/job_dialog.dart';
 
 class JobsScreen extends StatefulWidget {
@@ -108,13 +109,22 @@ class _JobsScreenState extends State<JobsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: JogoborgAppBar(
-        title: 'Backup Jobs',
-        additionalActions: [
+      appBar: AppBar(
+        title: const Text('Backup Jobs'),
+        actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: _loadJobs,
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await context.read<AuthService>().logout();
+              if (context.mounted) {
+                context.go('/login');
+              }
+            },
           ),
         ],
       ),

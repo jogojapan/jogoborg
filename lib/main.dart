@@ -26,14 +26,18 @@ class JogoborgApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ApiService()),
         ChangeNotifierProvider(create: (_) => ThemeService()),
       ],
-      child: Consumer2<AuthService, ThemeService>(
-        builder: (context, authService, themeService, _) {
-          return MaterialApp.router(
-            title: 'Jogoborg - Borg Backup Manager',
-            theme: ThemeService.lightTheme,
-            darkTheme: ThemeService.darkTheme,
-            themeMode: themeService.themeMode,
-            routerConfig: _createRouter(authService),
+      child: Consumer<AuthService>(
+        builder: (context, authService, _) {
+          return Consumer<ThemeService>(
+            builder: (context, themeService, _) {
+              return MaterialApp.router(
+                title: 'Jogoborg - Borg Backup Manager',
+                theme: ThemeService.lightTheme,
+                darkTheme: ThemeService.darkTheme,
+                themeMode: themeService.themeMode,
+                routerConfig: _createRouter(authService),
+              );
+            },
           );
         },
       ),
