@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'services/auth_service.dart';
 import 'services/api_service.dart';
+import 'services/theme_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/repos_screen.dart';
@@ -23,19 +24,15 @@ class JogoborgApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ApiService()),
+        ChangeNotifierProvider(create: (_) => ThemeService()),
       ],
-      child: Consumer<AuthService>(
-        builder: (context, authService, _) {
+      child: Consumer2<AuthService, ThemeService>(
+        builder: (context, authService, themeService, _) {
           return MaterialApp.router(
             title: 'Jogoborg - Borg Backup Manager',
-            theme: ThemeData(
-              primarySwatch: Colors.blue,
-              visualDensity: VisualDensity.adaptivePlatformDensity,
-              appBarTheme: const AppBarTheme(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-            ),
+            theme: ThemeService.lightTheme,
+            darkTheme: ThemeService.darkTheme,
+            themeMode: themeService.themeMode,
             routerConfig: _createRouter(authService),
           );
         },

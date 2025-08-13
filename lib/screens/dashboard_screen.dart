@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/jogoborg_app_bar.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -10,20 +11,7 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Jogoborg Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await context.read<AuthService>().logout();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
-          ),
-        ],
-      ),
+      appBar: const JogoborgAppBar(title: 'Jogoborg Dashboard'),
       drawer: const AppDrawer(),
       body: Padding(
         padding: const EdgeInsets.all(16),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/theme_service.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -79,6 +80,21 @@ class AppDrawer extends StatelessWidget {
             ),
           ),
           const Divider(),
+          Consumer<ThemeService>(
+            builder: (context, themeService, child) {
+              return ListTile(
+                leading: Icon(
+                  themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode,
+                ),
+                title: Text(
+                  themeService.isDarkMode ? 'Light Mode' : 'Dark Mode',
+                ),
+                onTap: () {
+                  themeService.toggleTheme();
+                },
+              );
+            },
+          ),
           ListTile(
             leading: const Icon(Icons.logout),
             title: const Text('Logout'),

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/jogoborg_app_bar.dart';
 
 class SourcesScreen extends StatefulWidget {
   const SourcesScreen({super.key});
@@ -83,11 +84,12 @@ class _SourcesScreenState extends State<SourcesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Source Directories'),
-        actions: [
+      appBar: JogoborgAppBar(
+        title: 'Source Directories',
+        additionalActions: [
           IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
             onPressed: _loadDirectory,
           ),
         ],

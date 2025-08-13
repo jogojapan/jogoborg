@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/jogoborg_app_bar.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -214,11 +215,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notification Settings'),
-        actions: [
+      appBar: JogoborgAppBar(
+        title: 'Notification Settings',
+        additionalActions: [
           IconButton(
             icon: const Icon(Icons.save),
+            tooltip: 'Save Settings',
             onPressed: isSaving ? null : _saveSettings,
           ),
         ],
