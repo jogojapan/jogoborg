@@ -58,7 +58,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
       
-      final response = await apiService.get('/notifications', token: authService.token);
+      final response = await apiService.get('/notifications/edit', token: authService.token);
       final settings = response['settings'] ?? {};
       
       // Load SMTP settings

@@ -51,6 +51,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._handle_get_job_logs(job_id, parsed_path.query)
             elif path == '/api/notifications':
                 self._handle_get_notifications()
+            elif path == '/api/notifications/edit':
+                self._handle_get_notifications_for_edit()
             elif path.startswith('/'):
                 self._serve_static_file(path)
             else:
@@ -587,14 +589,24 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_error(500, "Failed to calculate size")
 
     def _handle_get_notifications(self):
-        """Get notification settings."""
+        """Get notification settings (with masked sensitive data)."""
         try:
-            settings = self.notification_service.get_notification_settings()
+            settings = self.notification_service.get_notification_settings(mask_sensitive=True)
             self._send_json_response({'settings': settings})
             
         except Exception as e:
             logging.error(f"Error getting notifications: {e}")
             self._send_error(500, "Failed to get notification settings")
+
+    def _handle_get_notifications_for_edit(self):
+        """Get full notification settings for editing (includes sensitive data)."""
+        try:
+            settings = self.notification_service.get_notification_settings(mask_sensitive=False)
+            self._send_json_response({'settings': settings})
+            
+        except Exception as e:
+            logging.error(f"Error getting notifications for edit: {e}")
+            self._send_error(500, "Failed to get notification settings for editing")
 
     def _handle_update_notifications(self, data):
         """Update notification settings."""

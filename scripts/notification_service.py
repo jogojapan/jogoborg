@@ -270,17 +270,32 @@ This notification was sent by Jogoborg backup system.
         cursor = conn.cursor()
         
         try:
+            # Load existing settings to preserve unchanged passwords
+            existing_settings = self._load_notification_settings()
+            
             # Encrypt configurations
             smtp_config_encrypted = None
             webhook_config_encrypted = None
             
             if smtp_config:
+                # Preserve existing password if not changed (indicated by ***)
+                if (smtp_config.get('password') == '***' and 
+                    existing_settings and existing_settings.get('smtp_config')):
+                    smtp_config = smtp_config.copy()
+                    smtp_config['password'] = existing_settings['smtp_config'].get('password', '')
+                
                 smtp_config_json = json.dumps(smtp_config)
                 smtp_config_encrypted = encrypt_data(smtp_config_json)
                 if smtp_config_encrypted is None:
                     raise Exception("Failed to encrypt SMTP configuration")
             
             if webhook_config:
+                # Preserve existing token if not changed (indicated by ***)
+                if (webhook_config.get('token') == '***' and 
+                    existing_settings and existing_settings.get('webhook_config')):
+                    webhook_config = webhook_config.copy()
+                    webhook_config['token'] = existing_settings['webhook_config'].get('token', '')
+                
                 webhook_config_json = json.dumps(webhook_config)
                 webhook_config_encrypted = encrypt_data(webhook_config_json)
                 if webhook_config_encrypted is None:
@@ -299,12 +314,16 @@ This notification was sent by Jogoborg backup system.
         finally:
             conn.close()
 
-    def get_notification_settings(self):
-        """Get notification settings for display (without sensitive data)."""
+    def get_notification_settings(self, mask_sensitive=True):
+        """Get notification settings. If mask_sensitive=False, returns full settings for editing."""
         settings = self._load_notification_settings()
         
         if not settings:
             return {'smtp_config': None, 'webhook_config': None}
+        
+        if not mask_sensitive:
+            # Return full settings for editing
+            return settings
         
         # Remove sensitive information for display
         display_settings = {}
