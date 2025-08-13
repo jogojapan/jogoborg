@@ -100,7 +100,7 @@ class NotificationService:
 
     def _send_smtp_notification(self, smtp_config, subject, message, is_error):
         """Send email notification via SMTP."""
-        if not smtp_config or not all(k in smtp_config for k in ['host', 'username', 'password']):
+        if not smtp_config or not all(k in smtp_config for k in ['host', 'username', 'password', 'sender_email']):
             self.logger.warning("Incomplete SMTP configuration, skipping email notification")
             return
         
@@ -108,12 +108,14 @@ class NotificationService:
         port = smtp_config.get('port', 587)
         username = smtp_config['username']
         password = smtp_config['password']
+        sender_email = smtp_config['sender_email']
+        recipient_email = smtp_config.get('recipient_email', sender_email)  # Default to sender if no recipient specified
         security = smtp_config.get('security', 'STARTTLS').upper()
         
         # Create message
         msg = MIMEMultipart()
-        msg['From'] = username
-        msg['To'] = username  # Send to self by default
+        msg['From'] = sender_email
+        msg['To'] = recipient_email
         msg['Subject'] = f"[Jogoborg] {subject}"
         
         # Add timestamp and hostname to message

@@ -190,6 +190,8 @@ Backup jobs use cron syntax but are restricted to quarter-hour starts:
 - **Port**: SMTP port (587 for STARTTLS, 465 for SSL)
 - **Security**: STARTTLS, SSL/TLS, or None
 - **Username/Password**: SMTP authentication
+- **Sender Email**: Email address to send notifications from
+- **Recipient Email**: Email address to receive notifications (optional, defaults to sender)
 
 ### Webhook (Gotify)
 - **URL**: Gotify message endpoint

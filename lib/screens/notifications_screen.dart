@@ -19,6 +19,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final _smtpPortController = TextEditingController();
   final _smtpUsernameController = TextEditingController();
   final _smtpPasswordController = TextEditingController();
+  final _smtpSenderEmailController = TextEditingController();
+  final _smtpRecipientEmailController = TextEditingController();
   String _smtpSecurity = 'STARTTLS';
   
   // Webhook settings
@@ -42,6 +44,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _smtpPortController.dispose();
     _smtpUsernameController.dispose();
     _smtpPasswordController.dispose();
+    _smtpSenderEmailController.dispose();
+    _smtpRecipientEmailController.dispose();
     _webhookUrlController.dispose();
     _webhookTokenController.dispose();
     super.dispose();
@@ -63,6 +67,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _smtpPortController.text = (smtpConfig['port'] ?? '587').toString();
       _smtpUsernameController.text = smtpConfig['username'] ?? '';
       _smtpPasswordController.text = smtpConfig['password'] ?? '';
+      _smtpSenderEmailController.text = smtpConfig['sender_email'] ?? '';
+      _smtpRecipientEmailController.text = smtpConfig['recipient_email'] ?? '';
       _smtpSecurity = smtpConfig['security'] ?? 'STARTTLS';
       
       // Load webhook settings
@@ -99,6 +105,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           'port': int.tryParse(_smtpPortController.text) ?? 587,
           'username': _smtpUsernameController.text,
           'password': _smtpPasswordController.text,
+          'sender_email': _smtpSenderEmailController.text,
+          'recipient_email': _smtpRecipientEmailController.text,
           'security': _smtpSecurity,
         },
         'webhook_config': {
@@ -141,6 +149,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           'port': int.tryParse(_smtpPortController.text) ?? 587,
           'username': _smtpUsernameController.text,
           'password': _smtpPasswordController.text,
+          'sender_email': _smtpSenderEmailController.text,
+          'recipient_email': _smtpRecipientEmailController.text,
           'security': _smtpSecurity,
         },
         token: authService.token,
@@ -311,6 +321,44 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               border: OutlineInputBorder(),
                             ),
                             obscureText: true,
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          TextFormField(
+                            controller: _smtpSenderEmailController,
+                            decoration: const InputDecoration(
+                              labelText: 'Sender Email Address',
+                              hintText: 'backups@example.com',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Sender email address is required';
+                              }
+                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                return 'Enter a valid email address';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          TextFormField(
+                            controller: _smtpRecipientEmailController,
+                            decoration: const InputDecoration(
+                              labelText: 'Recipient Email Address (optional)',
+                              hintText: 'admin@example.com',
+                              border: OutlineInputBorder(),
+                              helperText: 'Leave empty to send to sender address',
+                            ),
+                            validator: (value) {
+                              if (value != null && value.isNotEmpty) {
+                                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                  return 'Enter a valid email address';
+                                }
+                              }
+                              return null;
+                            },
                           ),
                         ],
                       ),
