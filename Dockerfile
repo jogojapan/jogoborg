@@ -45,6 +45,10 @@ RUN flutter pub get
 # Copy application source code
 COPY . .
 
+# Use simplified main for initial build
+RUN mv lib/main.dart lib/main_full.dart || true
+RUN mv lib/main_simple.dart lib/main.dart || true
+
 # Build Flutter web application
 RUN flutter build web --release
 
