@@ -4,13 +4,22 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \
     curl \
     git \
+    unzip \
+    xz-utils \
+    zip \
+    libgconf-2-4 \
+    gdb \
+    libstdc++6 \
+    libglu1-mesa \
+    fonts-droid-fallback \
+    lib32stdc++6 \
+    python3 \
     borgbackup \
     rclone \
     gnupg \
     sqlite3 \
     postgresql-client \
     mariadb-client \
-    python3 \
     python3-pip \
     psmisc \
     procps \
@@ -22,9 +31,9 @@ RUN apt-get update && apt-get install -y \
 RUN git clone https://github.com/flutter/flutter.git -b stable /opt/flutter
 ENV PATH="/opt/flutter/bin:${PATH}"
 
-# Pre-download Flutter dependencies
-RUN flutter doctor
-RUN flutter config --enable-web
+# Pre-download Flutter dependencies and configure
+RUN flutter config --enable-web --no-analytics
+RUN flutter precache --web
 
 # Create app directory
 WORKDIR /app
