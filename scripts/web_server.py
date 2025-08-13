@@ -37,8 +37,6 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Handle GET requests."""
         try:
-            self._set_cors_headers()
-            
             parsed_path = urlparse(self.path)
             path = parsed_path.path
             
@@ -65,7 +63,6 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Handle POST requests."""
         try:
-            self._set_cors_headers()
             
             parsed_path = urlparse(self.path)
             path = parsed_path.path
@@ -104,7 +101,6 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def do_PUT(self):
         """Handle PUT requests."""
         try:
-            self._set_cors_headers()
             
             parsed_path = urlparse(self.path)
             path = parsed_path.path
@@ -133,7 +129,6 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         """Handle DELETE requests."""
         try:
-            self._set_cors_headers()
             
             path = urlparse(self.path).path
             
@@ -157,6 +152,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         """Handle health check endpoint."""
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
+        self._set_cors_headers()
         self.end_headers()
         
         response = {
@@ -685,6 +681,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', content_type)
             self.send_header('Content-Length', len(content))
+            self._set_cors_headers()
             self.end_headers()
             self.wfile.write(content)
             
@@ -715,6 +712,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         """Send JSON response."""
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
+        self._set_cors_headers()
         self.end_headers()
         
         response_json = json.dumps(data, indent=2)
@@ -724,6 +722,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         """Send error response."""
         self.send_response(status_code)
         self.send_header('Content-Type', 'application/json')
+        self._set_cors_headers()
         self.end_headers()
         
         error_response = {
