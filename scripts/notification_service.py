@@ -184,6 +184,13 @@ This notification was sent by Jogoborg backup system.
         success_priority = webhook_config.get('success_priority', 'normal')
         error_priority = webhook_config.get('error_priority', 'high')
         
+        # Ensure URL ends with /message for Gotify compatibility
+        if not url.endswith('/message'):
+            if url.endswith('/'):
+                url += 'message'
+            else:
+                url += '/message'
+        
         # Determine priority
         priority = error_priority if is_error else success_priority
         priority_map = {
@@ -200,12 +207,7 @@ This notification was sent by Jogoborg backup system.
         payload = {
             'title': f"[Jogoborg] {subject}",
             'message': f"{message}\n\nHost: {hostname}\nTime: {timestamp}",
-            'priority': priority_num,
-            'extras': {
-                'client::display': {
-                    'contentType': 'text/markdown'
-                }
-            }
+            'priority': priority_num
         }
         
         headers = {
@@ -220,6 +222,9 @@ This notification was sent by Jogoborg backup system.
                 url += f"?token={token}"
         
         try:
+            self.logger.debug(f"Sending webhook to: {url}")
+            self.logger.debug(f"Payload: {payload}")
+            
             response = requests.post(
                 url,
                 json=payload,
@@ -227,11 +232,20 @@ This notification was sent by Jogoborg backup system.
                 timeout=10
             )
             
+            self.logger.debug(f"Webhook response status: {response.status_code}")
+            self.logger.debug(f"Webhook response: {response.text}")
+            
             response.raise_for_status()
             self.logger.info("Webhook notification sent successfully")
             
+        except requests.exceptions.HTTPError as e:
+            self.logger.error(f"Webhook HTTP error {response.status_code}: {response.text}")
+            self.logger.error(f"Request URL: {url}")
+            self.logger.error(f"Request payload: {payload}")
+            raise
         except requests.exceptions.RequestException as e:
             self.logger.error(f"Webhook send failed: {e}")
+            self.logger.error(f"Request URL: {url}")
             raise
 
     def test_smtp_configuration(self, smtp_config):

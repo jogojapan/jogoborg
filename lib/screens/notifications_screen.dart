@@ -410,9 +410,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           TextFormField(
                             controller: _webhookUrlController,
                             decoration: const InputDecoration(
-                              labelText: 'Gotify URL',
-                              hintText: 'https://gotify.example.com/message',
+                              labelText: 'Gotify Server URL',
+                              hintText: 'https://notify.chobycat.com',
                               border: OutlineInputBorder(),
+                              helperText: 'Base URL only - /message will be added automatically',
                             ),
                           ),
                           const SizedBox(height: 16),
