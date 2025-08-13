@@ -14,6 +14,11 @@
   <script>
     {{flutter_js}}
     {{flutter_build_config}}
+    
+    // Actually start the Flutter app
+    window.addEventListener('load', function(ev) {
+      _flutter.loader.load();
+    });
   </script>
 </body>
 </html>
