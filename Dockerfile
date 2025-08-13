@@ -65,9 +65,9 @@ COPY . .
 RUN chown -R flutter:flutter /app
 
 USER flutter
-# Use simplified main for initial build
-RUN mv lib/main.dart lib/main_full.dart || true
-RUN mv lib/main_simple.dart lib/main.dart || true
+# Use full main application
+RUN mv lib/main.dart lib/main_simple.dart || true
+RUN mv lib/main_full.dart lib/main.dart || true
 
 # Build Flutter web application
 RUN flutter build web --release

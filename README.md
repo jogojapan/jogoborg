@@ -89,6 +89,22 @@ docker run -d \
   jogoborg:latest
 ```
 
+**For SELinux systems (RHEL, CentOS, Fedora), add `:Z` to volume mounts:**
+
+```bash
+docker run -d \
+  --name jogoborg \
+  -p 8080:8080 \
+  -v /path/to/source:/sourcespace/source:ro \
+  -v /path/to/borg/repos:/borgspace:Z \
+  -v jogoborg_config:/config:Z \
+  -v jogoborg_logs:/log:Z \
+  -e JOGOBORG_WEB_USERNAME=admin \
+  -e JOGOBORG_WEB_PASSWORD=your_secure_password \
+  -e JOGOBORG_GPG_PASSPHRASE=your_encryption_key \
+  jogoborg:latest
+```
+
 ## Building the Image
 
 ```bash
