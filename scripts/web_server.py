@@ -735,7 +735,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
 def run_server():
     """Run the HTTP server."""
-    port = int(os.environ.get('WEB_PORT', 8080))
+    port = int(os.environ.get('JOGOBORG_WEB_PORT', os.environ.get('WEB_PORT', 8080)))
     
     logging.basicConfig(
         level=logging.INFO,

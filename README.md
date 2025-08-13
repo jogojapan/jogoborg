@@ -18,13 +18,18 @@ Jogoborg is a comprehensive Docker-based backup solution using BorgBackup with a
 
 ### Environment Variables
 
+All Jogoborg environment variables are prefixed with `JOGOBORG_` to avoid conflicts with other containers.
+
 #### Required
-- `WEB_USERNAME`: Web interface username (default: admin)
-- `WEB_PASSWORD`: Web interface password (default: changeme)
-- `GPG_PASSPHRASE`: Encryption passphrase for credentials (default: changeme)
+- `JOGOBORG_WEB_USERNAME`: Web interface username (default: admin)
+- `JOGOBORG_WEB_PASSWORD`: Web interface password (default: changeme)
+- `JOGOBORG_GPG_PASSPHRASE`: Encryption passphrase for credentials (default: changeme)
 
 #### Optional
-- `WEB_PORT`: Web interface port (default: 8080)
+- `JOGOBORG_WEB_PORT`: Web interface port (default: 8080)
+
+#### Legacy Support
+For backward compatibility, the old unprefixed variables (`WEB_USERNAME`, `WEB_PASSWORD`, etc.) are still supported but will show deprecation warnings. Use the `JOGOBORG_` prefixed versions for new deployments.
 
 ### Docker Compose Example
 
@@ -78,9 +83,9 @@ docker run -d \
   -v /path/to/borg/repos:/borgspace \
   -v jogoborg_config:/config \
   -v jogoborg_logs:/log \
-  -e WEB_USERNAME=admin \
-  -e WEB_PASSWORD=your_secure_password \
-  -e GPG_PASSPHRASE=your_encryption_key \
+  -e JOGOBORG_WEB_USERNAME=admin \
+  -e JOGOBORG_WEB_PASSWORD=your_secure_password \
+  -e JOGOBORG_GPG_PASSPHRASE=your_encryption_key \
   jogoborg:latest
 ```
 
