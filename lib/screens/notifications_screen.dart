@@ -276,8 +276,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   controller: _smtpPortController,
                                   decoration: const InputDecoration(
                                     labelText: 'Port',
-                                    hintText: '587',
+                                    hintText: '587 (STARTTLS) / 465 (SSL)',
                                     border: OutlineInputBorder(),
+                                    helperText: '587=STARTTLS, 465=SSL, 25=None',
                                   ),
                                   keyboardType: TextInputType.number,
                                 ),
@@ -297,7 +298,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     DropdownMenuItem(value: 'NONE', child: Text('None')),
                                   ],
                                   onChanged: (value) {
-                                    setState(() => _smtpSecurity = value!);
+                                    setState(() {
+                                      _smtpSecurity = value!;
+                                      // Auto-update port based on security type if port is default
+                                      if (_smtpPortController.text == '587' || _smtpPortController.text == '465' || _smtpPortController.text.isEmpty) {
+                                        if (value == 'SSL') {
+                                          _smtpPortController.text = '465';
+                                        } else if (value == 'STARTTLS') {
+                                          _smtpPortController.text = '587';
+                                        } else {
+                                          _smtpPortController.text = '25';
+                                        }
+                                      }
+                                    });
                                   },
                                 ),
                               ),

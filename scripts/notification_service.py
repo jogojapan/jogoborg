@@ -105,12 +105,17 @@ class NotificationService:
             return
         
         host = smtp_config['host']
-        port = smtp_config.get('port', 587)
         username = smtp_config['username']
         password = smtp_config['password']
         sender_email = smtp_config['sender_email']
         recipient_email = smtp_config.get('recipient_email', sender_email)  # Default to sender if no recipient specified
         security = smtp_config.get('security', 'STARTTLS').upper()
+        
+        # Set default port based on security type if not specified
+        if 'port' in smtp_config:
+            port = smtp_config['port']
+        else:
+            port = 465 if security == 'SSL' else 587
         
         # Create message
         msg = MIMEMultipart()
@@ -137,19 +142,27 @@ This notification was sent by Jogoborg backup system.
         msg.attach(MIMEText(full_message, 'plain'))
         
         try:
-            # Create SMTP connection
+            # Create SMTP connection based on security type
             if security == 'SSL':
+                # SSL/TLS connection (usually port 465)
                 context = ssl.create_default_context()
-                server = smtplib.SMTP_SSL(host, port, context=context)
+                self.logger.debug(f"Connecting to {host}:{port} using SSL/TLS")
+                server = smtplib.SMTP_SSL(host, port, context=context, timeout=30)
             else:
-                server = smtplib.SMTP(host, port)
+                # Plain connection or STARTTLS (usually port 587 or 25)
+                self.logger.debug(f"Connecting to {host}:{port} using plain connection")
+                server = smtplib.SMTP(host, port, timeout=30)
                 
                 if security == 'STARTTLS':
+                    self.logger.debug("Starting STARTTLS encryption")
                     context = ssl.create_default_context()
                     server.starttls(context=context)
             
             # Authenticate and send
+            self.logger.debug("Authenticating with SMTP server")
             server.login(username, password)
+            
+            self.logger.debug("Sending email message")
             server.send_message(msg)
             server.quit()
             
@@ -157,6 +170,7 @@ This notification was sent by Jogoborg backup system.
             
         except Exception as e:
             self.logger.error(f"SMTP send failed: {e}")
+            self.logger.error(f"SMTP config: host={host}, port={port}, security={security}")
             raise
 
     def _send_webhook_notification(self, webhook_config, subject, message, is_error):
