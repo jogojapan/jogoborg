@@ -139,7 +139,7 @@ class BackupExecutor:
             
             # Execute compacting
             compact_duration, compact_max_memory = self._execute_borg_compact(
-                repo_path, job_logger
+                job, repo_path, job_logger
             )
             
             # Handle database dumps if configured
@@ -400,7 +400,7 @@ class BackupExecutor:
         
         return duration, int(max_memory)
 
-    def _execute_borg_compact(self, repo_path, logger):
+    def _execute_borg_compact(self, job, repo_path, logger):
         """Execute borg compact command with memory monitoring."""
         logger.info("Compacting repository")
         
