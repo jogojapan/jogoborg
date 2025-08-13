@@ -30,7 +30,7 @@ RUN flutter config --enable-web
 WORKDIR /app
 
 # Copy Flutter project files
-COPY pubspec.yaml pubspec.lock ./
+COPY pubspec.yaml ./
 RUN flutter pub get
 
 # Copy application source code
