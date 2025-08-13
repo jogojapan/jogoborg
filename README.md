@@ -95,7 +95,7 @@ docker run -d \
 docker run -d \
   --name jogoborg \
   -p 8080:8080 \
-  -v /path/to/source:/sourcespace/source:ro \
+  -v /path/to/source:/sourcespace/source:ro,z \
   -v /path/to/borg/repos:/borgspace:Z \
   -v jogoborg_config:/config:Z \
   -v jogoborg_logs:/log:Z \
