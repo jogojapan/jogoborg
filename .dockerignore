@@ -1,0 +1,40 @@
+# Git files
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Development files
+.env
+.env.local
+.env.example
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+build/
+dist/
+*.tar.gz
+
+# Flutter specific
+.dart_tool/
+.packages
+pubspec.lock
+
+# Temporary files
+tmp/
+temp/

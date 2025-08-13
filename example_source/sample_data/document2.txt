@@ -1,0 +1,10 @@
+Sample document 2
+==================
+
+This is another sample document for backup testing.
+It has different content to demonstrate Borg's
+deduplication capabilities.
+
+Last modified: 2024-01-16
+Size: Small  
+Type: Text document

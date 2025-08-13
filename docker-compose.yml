@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  jogoborg:
+    build: .
+    # image: jogoborg:latest  # Use this instead of build when using pre-built image
+    container_name: jogoborg
+    ports:
+      - "8080:8080"
+    volumes:
+      # Source directories to backup (mount your actual directories here)
+      # Example: - /home/user/documents:/sourcespace/documents:ro
+      # Example: - /var/lib/docker/volumes:/sourcespace/docker-volumes:ro
+      - ./example_source:/sourcespace/example:ro
+      
+      # Borg repositories storage (this will contain your backup repositories)
+      - jogoborg_repos:/borgspace
+      
+      # Configuration, database, and encrypted settings
+      - jogoborg_config:/config
+      
+      # Application and job logs
+      - jogoborg_logs:/log
+    environment:
+      # Web interface credentials
+      - WEB_USERNAME=admin
+      - WEB_PASSWORD=changeme_secure_password
+      
+      # Encryption passphrase for storing credentials securely
+      - GPG_PASSPHRASE=changeme_encryption_key
+      
+      # Web interface port
+      - WEB_PORT=8080
+      
+      # Optional: Timezone
+      - TZ=UTC
+    restart: unless-stopped
+    
+    # Health check to monitor service availability
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Optional: Resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '2.0'
+    #       memory: 4G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+
+  # Optional: Example of a database to backup
+  # postgres:
+  #   image: postgres:15
+  #   container_name: example_postgres
+  #   environment:
+  #     - POSTGRES_DB=exampledb
+  #     - POSTGRES_USER=exampleuser
+  #     - POSTGRES_PASSWORD=examplepass
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - jogoborg_network
+
+  # Optional: Gotify server for notifications
+  # gotify:
+  #   image: gotify/server
+  #   container_name: gotify
+  #   ports:
+  #     - "8081:80"
+  #   volumes:
+  #     - gotify_data:/app/data
+  #   environment:
+  #     - GOTIFY_DEFAULTUSER_NAME=admin
+  #     - GOTIFY_DEFAULTUSER_PASS=admin
+  #   networks:
+  #     - jogoborg_network
+
+volumes:
+  # Persistent storage for Borg repositories
+  jogoborg_repos:
+    driver: local
+    # Uncomment and modify for specific storage location:
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /path/to/your/backup/storage
+  
+  # Configuration and database storage
+  jogoborg_config:
+    driver: local
+  
+  # Log files storage
+  jogoborg_logs:
+    driver: local
+
+  # Optional database volume
+  # postgres_data:
+  
+  # Optional Gotify data
+  # gotify_data:
+
+# Optional: Network for inter-container communication
+# networks:
+#   jogoborg_network:
+#     driver: bridge

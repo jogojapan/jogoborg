@@ -1,0 +1,10 @@
+Sample document 1
+==================
+
+This is a sample document for backup testing.
+It contains some text data that will be compressed
+and deduplicated by Borg.
+
+Last modified: 2024-01-15
+Size: Small
+Type: Text document

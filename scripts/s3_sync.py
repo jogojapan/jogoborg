@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+import os
+import subprocess
+import tempfile
+import json
+import logging
+from datetime import datetime
+
+class S3Syncer:
+    def __init__(self):
+        self.logger = logging.getLogger('S3Syncer')
+        self.rclone_config_dir = '/config/rclone'
+        
+        # Ensure rclone config directory exists
+        os.makedirs(self.rclone_config_dir, exist_ok=True)
+
+    def sync_repository(self, s3_config, repo_path, logger):
+        """Sync a Borg repository to S3 using rclone."""
+        try:
+            # Create rclone remote configuration
+            remote_name = self._create_rclone_config(s3_config)
+            
+            # Determine source and destination paths
+            repo_name = os.path.basename(repo_path)
+            s3_bucket = s3_config['bucket']
+            s3_path = f"{remote_name}:{s3_bucket}/{repo_name}"
+            
+            # Run rclone sync with options to only copy modified files
+            self._run_rclone_sync(repo_path, s3_path, logger)
+            
+            # Update last sync timestamp
+            self._update_last_sync_time(repo_path)
+            
+            logger.info(f"Successfully synced repository to S3: {s3_path}")
+            
+        except Exception as e:
+            logger.error(f"S3 sync failed: {e}")
+            raise
+
+    def _create_rclone_config(self, s3_config):
+        """Create rclone configuration for the S3 remote."""
+        provider = s3_config.get('provider', 'aws')
+        remote_name = f"s3_{provider}_{hash(json.dumps(s3_config, sort_keys=True)) % 10000}"
+        
+        config_file = os.path.join(self.rclone_config_dir, 'rclone.conf')
+        
+        # Read existing config
+        existing_config = ""
+        if os.path.exists(config_file):
+            with open(config_file, 'r') as f:
+                existing_config = f.read()
+        
+        # Check if this remote already exists
+        if f"[{remote_name}]" in existing_config:
+            return remote_name
+        
+        # Create new remote configuration
+        if provider == 'aws':
+            remote_config = f"""
+[{remote_name}]
+type = s3
+provider = AWS
+access_key_id = {s3_config['access_key']}
+secret_access_key = {s3_config['secret_key']}
+region = us-east-1
+storage_class = {s3_config.get('storage_class', 'STANDARD')}
+"""
+        elif provider == 'minio':
+            remote_config = f"""
+[{remote_name}]
+type = s3
+provider = Minio
+access_key_id = {s3_config['access_key']}
+secret_access_key = {s3_config['secret_key']}
+endpoint = {s3_config['endpoint']}
+"""
+        else:
+            raise ValueError(f"Unsupported S3 provider: {provider}")
+        
+        # Append to config file
+        with open(config_file, 'a') as f:
+            f.write(remote_config)
+        
+        # Set secure permissions
+        os.chmod(config_file, 0o600)
+        
+        return remote_name
+
+    def _run_rclone_sync(self, source_path, dest_path, logger):
+        """Run rclone sync command with appropriate options."""
+        
+        # Get the last sync time
+        last_sync_file = os.path.join(source_path, '.jogoborg_last_sync')
+        last_sync_time = None
+        
+        if os.path.exists(last_sync_file):
+            try:
+                with open(last_sync_file, 'r') as f:
+                    last_sync_time = f.read().strip()
+            except Exception:
+                pass
+        
+        # Build rclone command
+        cmd = [
+            'rclone', 'sync',
+            source_path, dest_path,
+            '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
+            '--verbose',
+            '--stats', '30s',
+            '--transfers', '4',
+            '--checkers', '8',
+        ]
+        
+        # If we have a last sync time, only sync files modified since then
+        if last_sync_time:
+            cmd.extend(['--max-age', self._calculate_max_age(last_sync_time)])
+        
+        # Add filters to exclude temporary files
+        cmd.extend([
+            '--exclude', '.jogoborg_*',
+            '--exclude', 'tmp/**',
+            '--exclude', '*.tmp',
+        ])
+        
+        logger.info(f"Running rclone sync: {' '.join(cmd)}")
+        
+        # Execute rclone command
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            universal_newlines=True
+        )
+        
+        # Log output in real-time
+        for line in iter(process.stdout.readline, ''):
+            if line.strip():
+                logger.debug(f"rclone: {line.strip()}")
+        
+        process.wait()
+        
+        if process.returncode != 0:
+            raise Exception(f"rclone sync failed with return code {process.returncode}")
+
+    def _calculate_max_age(self, last_sync_time):
+        """Calculate max-age parameter for rclone based on last sync time."""
+        try:
+            last_sync = datetime.fromisoformat(last_sync_time.replace('Z', '+00:00'))
+            now = datetime.now(last_sync.tzinfo)
+            diff = now - last_sync
+            
+            # Add some buffer time to ensure we don't miss files
+            total_seconds = int(diff.total_seconds()) + 300  # Add 5 minutes buffer
+            
+            return f"{total_seconds}s"
+            
+        except Exception:
+            # If we can't parse the time, sync everything
+            return "1000d"  # 1000 days should cover everything
+
+    def _update_last_sync_time(self, repo_path):
+        """Update the last sync timestamp file."""
+        last_sync_file = os.path.join(repo_path, '.jogoborg_last_sync')
+        
+        try:
+            with open(last_sync_file, 'w') as f:
+                f.write(datetime.utcnow().isoformat() + 'Z')
+        except Exception as e:
+            self.logger.warning(f"Failed to update last sync time: {e}")
+
+    def test_s3_connection(self, s3_config):
+        """Test S3 connection and credentials."""
+        try:
+            remote_name = self._create_rclone_config(s3_config)
+            
+            # Test with rclone lsd (list directories)
+            cmd = [
+                'rclone', 'lsd',
+                f"{remote_name}:{s3_config['bucket']}",
+                '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
+                '--max-depth', '1'
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                return True, "S3 connection successful"
+            else:
+                return False, f"S3 connection failed: {result.stderr}"
+                
+        except subprocess.TimeoutExpired:
+            return False, "S3 connection test timed out"
+        except Exception as e:
+            return False, f"S3 connection test error: {str(e)}"
+
+    def list_backups(self, s3_config, repo_name=None):
+        """List backups available in S3."""
+        try:
+            remote_name = self._create_rclone_config(s3_config)
+            bucket = s3_config['bucket']
+            
+            if repo_name:
+                path = f"{remote_name}:{bucket}/{repo_name}"
+            else:
+                path = f"{remote_name}:{bucket}"
+            
+            cmd = [
+                'rclone', 'lsl',
+                path,
+                '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if result.returncode == 0:
+                return self._parse_rclone_list_output(result.stdout)
+            else:
+                raise Exception(f"Failed to list S3 backups: {result.stderr}")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to list S3 backups: {e}")
+            raise
+
+    def _parse_rclone_list_output(self, output):
+        """Parse rclone lsl output into structured data."""
+        files = []
+        
+        for line in output.strip().split('\n'):
+            if not line.strip():
+                continue
+                
+            parts = line.strip().split(None, 3)
+            if len(parts) >= 4:
+                size = int(parts[0])
+                date_str = f"{parts[1]} {parts[2]}"
+                filename = parts[3]
+                
+                files.append({
+                    'name': filename,
+                    'size': size,
+                    'modified': date_str,
+                })
+        
+        return files
+
+    def restore_from_s3(self, s3_config, repo_name, local_path, logger):
+        """Restore a repository from S3 to local storage."""
+        try:
+            remote_name = self._create_rclone_config(s3_config)
+            s3_path = f"{remote_name}:{s3_config['bucket']}/{repo_name}"
+            
+            # Ensure local directory exists
+            os.makedirs(local_path, exist_ok=True)
+            
+            cmd = [
+                'rclone', 'sync',
+                s3_path, local_path,
+                '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
+                '--verbose',
+                '--stats', '30s',
+                '--transfers', '4',
+                '--checkers', '8',
+            ]
+            
+            logger.info(f"Restoring from S3: {s3_path} -> {local_path}")
+            
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                universal_newlines=True
+            )
+            
+            # Log output in real-time
+            for line in iter(process.stdout.readline, ''):
+                if line.strip():
+                    logger.debug(f"rclone restore: {line.strip()}")
+            
+            process.wait()
+            
+            if process.returncode != 0:
+                raise Exception(f"rclone restore failed with return code {process.returncode}")
+            
+            logger.info("Repository restored successfully from S3")
+            
+        except Exception as e:
+            logger.error(f"S3 restore failed: {e}")
+            raise
+
+if __name__ == '__main__':
+    # This can be used for testing S3 sync functionality
+    pass
