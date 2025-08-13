@@ -28,6 +28,7 @@ def init_database():
         post_command TEXT,
         s3_config TEXT,
         db_config TEXT,
+        repository_passphrase TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -131,10 +132,25 @@ def init_database():
     END
     ''')
     
+    # Handle database migrations for existing databases
+    _migrate_database(cursor)
+    
     conn.commit()
     conn.close()
     
     print("Database initialized successfully.")
+
+def _migrate_database(cursor):
+    """Handle database migrations for existing databases."""
+    
+    # Check if repository_passphrase column exists, add it if it doesn't
+    cursor.execute("PRAGMA table_info(backup_jobs)")
+    columns = [row[1] for row in cursor.fetchall()]
+    
+    if 'repository_passphrase' not in columns:
+        print("Adding repository_passphrase column to backup_jobs table...")
+        cursor.execute("ALTER TABLE backup_jobs ADD COLUMN repository_passphrase TEXT")
+        print("Migration completed: repository_passphrase column added.")
 
 if __name__ == '__main__':
     init_database()

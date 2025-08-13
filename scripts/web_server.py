@@ -276,7 +276,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             SELECT id, name, schedule, compression, exclude_patterns,
                    keep_daily, keep_monthly, keep_yearly, source_directories,
                    pre_command, post_command, s3_config, db_config,
-                   created_at, updated_at
+                   repository_passphrase, created_at, updated_at
             FROM backup_jobs
             ORDER BY created_at DESC
             ''')
@@ -286,13 +286,31 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 job_id, name, schedule, compression, exclude_patterns, \
                 keep_daily, keep_monthly, keep_yearly, source_directories, \
                 pre_command, post_command, s3_config, db_config, \
-                created_at, updated_at = row
+                repository_passphrase, created_at, updated_at = row
                 
                 # Parse JSON fields safely
                 try:
                     source_dirs = json.loads(source_directories) if source_directories else []
                 except (json.JSONDecodeError, TypeError):
                     source_dirs = []
+                
+                # Decrypt configurations safely
+                s3_config_data = None
+                db_config_data = None
+                
+                if s3_config:
+                    try:
+                        s3_config_data = json.loads(decrypt_data(s3_config))
+                    except Exception:
+                        # If decryption fails, just set to None
+                        s3_config_data = None
+                
+                if db_config:
+                    try:
+                        db_config_data = json.loads(decrypt_data(db_config))
+                    except Exception:
+                        # If decryption fails, just set to None
+                        db_config_data = None
                 
                 jobs.append({
                     'id': job_id,
@@ -306,10 +324,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     'source_directories': source_dirs,
                     'pre_command': pre_command,
                     'post_command': post_command,
-                    's3_config': json.loads(s3_config) if s3_config else None,
-                    'db_config': json.loads(db_config) if db_config else None,
+                    's3_config': s3_config_data,
+                    'db_config': db_config_data,
                     'created_at': created_at,
                     'updated_at': updated_at
+                    # Note: repository_passphrase is intentionally not included for security
                 })
             
             self._send_json_response({'jobs': jobs})
@@ -321,7 +340,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         """Create a new backup job."""
         try:
             # Validate required fields
-            required_fields = ['name', 'schedule', 'source_directories']
+            required_fields = ['name', 'schedule', 'source_directories', 'repository_passphrase']
             for field in required_fields:
                 if not data.get(field):
                     self._send_error(400, f"Missing required field: {field}")
@@ -331,9 +350,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             cursor = conn.cursor()
             
             try:
-                # Encrypt S3 and DB configurations if provided
+                # Encrypt sensitive configurations
                 s3_config_encrypted = None
                 db_config_encrypted = None
+                repository_passphrase_encrypted = None
                 
                 if data.get('s3_config'):
                     s3_json = json.dumps(data['s3_config'])
@@ -343,12 +363,15 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     db_json = json.dumps(data['db_config'])
                     db_config_encrypted = encrypt_data(db_json)
                 
+                if data.get('repository_passphrase'):
+                    repository_passphrase_encrypted = encrypt_data(data['repository_passphrase'])
+                
                 cursor.execute('''
                 INSERT INTO backup_jobs (
                     name, schedule, compression, exclude_patterns,
                     keep_daily, keep_monthly, keep_yearly, source_directories,
-                    pre_command, post_command, s3_config, db_config
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    pre_command, post_command, s3_config, db_config, repository_passphrase
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['name'],
                     data['schedule'],
@@ -361,7 +384,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     data.get('pre_command'),
                     data.get('post_command'),
                     s3_config_encrypted,
-                    db_config_encrypted
+                    db_config_encrypted,
+                    repository_passphrase_encrypted
                 ))
                 
                 conn.commit()
@@ -386,9 +410,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             cursor = conn.cursor()
             
             try:
-                # Encrypt configurations if provided
+                # Encrypt sensitive configurations
                 s3_config_encrypted = None
                 db_config_encrypted = None
+                repository_passphrase_encrypted = None
                 
                 if data.get('s3_config'):
                     s3_json = json.dumps(data['s3_config'])
@@ -398,12 +423,15 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     db_json = json.dumps(data['db_config'])
                     db_config_encrypted = encrypt_data(db_json)
                 
+                if data.get('repository_passphrase'):
+                    repository_passphrase_encrypted = encrypt_data(data['repository_passphrase'])
+                
                 cursor.execute('''
                 UPDATE backup_jobs SET
                     name = ?, schedule = ?, compression = ?, exclude_patterns = ?,
                     keep_daily = ?, keep_monthly = ?, keep_yearly = ?,
                     source_directories = ?, pre_command = ?, post_command = ?,
-                    s3_config = ?, db_config = ?
+                    s3_config = ?, db_config = ?, repository_passphrase = ?
                 WHERE id = ?
                 ''', (
                     data['name'],
@@ -418,6 +446,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     data.get('post_command'),
                     s3_config_encrypted,
                     db_config_encrypted,
+                    repository_passphrase_encrypted,
                     job_id
                 ))
                 

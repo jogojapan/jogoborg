@@ -28,11 +28,9 @@ if [ ! -z "$GPG_PASSPHRASE" ] && [ -z "$JOGOBORG_GPG_PASSPHRASE" ]; then
     export GPG_PASSPHRASE=$GPG_PASSPHRASE
 fi
 
-# Initialize configuration directory
-if [ ! -f "/config/jogoborg.db" ]; then
-    echo "Initializing database..."
-    python3 /app/scripts/init_db.py
-fi
+# Initialize configuration directory and run database migrations
+echo "Initializing database and running migrations..."
+python3 /app/scripts/init_db.py
 
 # Generate GPG key if it doesn't exist
 if [ ! -f "/config/jogoborg.gpg" ]; then

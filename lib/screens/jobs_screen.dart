@@ -6,7 +6,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/theme_service.dart';
 import '../widgets/app_drawer.dart';
-// import '../widgets/job_dialog.dart';
+import '../widgets/job_dialog.dart';
 
 class JobsScreen extends StatefulWidget {
   const JobsScreen({super.key});
@@ -50,17 +50,25 @@ class _JobsScreenState extends State<JobsScreen> {
   }
 
   Future<void> _createJob() async {
-    // TODO: Implement job creation dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Job creation not yet implemented')),
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => const JobDialog(),
     );
+    
+    if (result == true) {
+      _loadJobs(); // Refresh the job list
+    }
   }
 
   Future<void> _editJob(Map<String, dynamic> job) async {
-    // TODO: Implement job edit dialog
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Job editing not yet implemented')),
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => JobDialog(job: job),
     );
+    
+    if (result == true) {
+      _loadJobs(); // Refresh the job list
+    }
   }
 
   Future<void> _deleteJob(Map<String, dynamic> job) async {

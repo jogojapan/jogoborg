@@ -14,6 +14,7 @@ sys.path.append('/app')
 
 from scripts.backup_executor import BackupExecutor
 from scripts.notification_service import NotificationService
+from scripts.init_gpg import decrypt_data
 
 class BackupScheduler:
     def __init__(self):
@@ -44,7 +45,7 @@ class BackupScheduler:
             cursor.execute('''
             SELECT id, name, schedule, compression, exclude_patterns, 
                    keep_daily, keep_monthly, keep_yearly, source_directories,
-                   pre_command, post_command, s3_config, db_config
+                   pre_command, post_command, s3_config, db_config, repository_passphrase
             FROM backup_jobs
             ''')
             
@@ -54,10 +55,36 @@ class BackupScheduler:
             for job in jobs:
                 job_id, name, schedule, compression, exclude_patterns, \
                 keep_daily, keep_monthly, keep_yearly, source_directories, \
-                pre_command, post_command, s3_config, db_config = job
+                pre_command, post_command, s3_config, db_config, repository_passphrase = job
                 
                 # Check if job should run now
                 if self.should_run_job(schedule, current_time, job_id):
+                    # Decrypt sensitive configurations
+                    decrypted_passphrase = None
+                    decrypted_s3_config = None
+                    decrypted_db_config = None
+                    
+                    if repository_passphrase:
+                        try:
+                            decrypted_passphrase = decrypt_data(repository_passphrase)
+                        except Exception as e:
+                            self.logger.error(f"Failed to decrypt repository passphrase for job {name}: {e}")
+                            continue  # Skip this job if passphrase can't be decrypted
+                    
+                    if s3_config:
+                        try:
+                            decrypted_s3_config = json.loads(decrypt_data(s3_config))
+                        except Exception as e:
+                            self.logger.error(f"Failed to decrypt S3 config for job {name}: {e}")
+                            # Don't skip job, just set to None
+                    
+                    if db_config:
+                        try:
+                            decrypted_db_config = json.loads(decrypt_data(db_config))
+                        except Exception as e:
+                            self.logger.error(f"Failed to decrypt DB config for job {name}: {e}")
+                            # Don't skip job, just set to None
+                    
                     pending_jobs.append({
                         'id': job_id,
                         'name': name,
@@ -70,8 +97,9 @@ class BackupScheduler:
                         'source_directories': json.loads(source_directories),
                         'pre_command': pre_command,
                         'post_command': post_command,
-                        's3_config': json.loads(s3_config) if s3_config else None,
-                        'db_config': json.loads(db_config) if db_config else None,
+                        's3_config': decrypted_s3_config,
+                        'db_config': decrypted_db_config,
+                        'repository_passphrase': decrypted_passphrase,
                     })
             
             return pending_jobs

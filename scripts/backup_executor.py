@@ -30,35 +30,58 @@ class MemoryMonitor:
         self.running = True
         self.max_memory = 0
         
-        thread = threading.Thread(target=self._monitor_loop)
-        thread.daemon = True
-        thread.start()
+        # Only start monitoring if the process is still running
+        try:
+            if process and process.poll() is None:
+                thread = threading.Thread(target=self._monitor_loop)
+                thread.daemon = True
+                thread.start()
+            else:
+                # Process already finished, set a minimal memory value
+                self.max_memory = 1.0  # 1MB default for finished processes
+        except Exception:
+            # If we can't check process status, assume it finished quickly
+            self.max_memory = 1.0
         
     def stop_monitoring(self):
         """Stop memory monitoring."""
         self.running = False
-        return self.max_memory
+        # Return at least 1MB if no memory was measured (e.g., for very fast processes)
+        return max(self.max_memory, 1.0)
         
     def _monitor_loop(self):
         """Main monitoring loop."""
+        psutil_process = None
+        
+        # Convert Popen to psutil.Process for memory monitoring
+        try:
+            if self.process and self.process.poll() is None:
+                psutil_process = psutil.Process(self.process.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
+            # Process already finished or not accessible
+            return
+            
         while self.running and self.process:
             try:
                 if self.process.poll() is None:  # Process is still running
-                    # Get memory usage in MB
-                    memory_info = self.process.memory_info()
-                    memory_mb = memory_info.rss / 1024 / 1024
-                    
-                    if memory_mb > self.max_memory:
-                        self.max_memory = memory_mb
+                    if psutil_process:
+                        # Get memory usage in MB
+                        memory_info = psutil_process.memory_info()
+                        memory_mb = memory_info.rss / 1024 / 1024
                         
+                        if memory_mb > self.max_memory:
+                            self.max_memory = memory_mb
+                            
                     time.sleep(3)  # Check every 3 seconds
                 else:
                     break
                     
             except (psutil.NoSuchProcess, psutil.AccessDenied):
+                # Process finished or became inaccessible
                 break
             except Exception as e:
-                logging.error(f"Memory monitoring error: {e}")
+                # Don't treat memory monitoring errors as fatal
+                logging.warning(f"Memory monitoring warning for {self.process_name}: {e}")
                 break
 
 class BackupExecutor:
@@ -102,7 +125,7 @@ class BackupExecutor:
             
             # Initialize repository if it doesn't exist
             if not os.path.exists(repo_path):
-                self._init_repository(repo_path, job_logger)
+                self._init_repository(repo_path, job['repository_passphrase'], job_logger)
             
             # Execute main backup
             create_duration, create_max_memory = self._execute_borg_create(
@@ -243,7 +266,7 @@ class BackupExecutor:
         finally:
             conn.close()
 
-    def _init_repository(self, repo_path, logger):
+    def _init_repository(self, repo_path, passphrase, logger):
         """Initialize a new Borg repository."""
         logger.info(f"Initializing new repository: {repo_path}")
         
@@ -257,7 +280,7 @@ class BackupExecutor:
             cmd,
             capture_output=True,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE='changeme')  # Default passphrase
+            env=dict(os.environ, BORG_PASSPHRASE=passphrase)
         )
         
         if result.returncode != 0:
@@ -290,21 +313,32 @@ class BackupExecutor:
         # Execute with memory monitoring
         start_time = time.time()
         monitor = MemoryMonitor('borg create')
+        max_memory = 1.0  # Default fallback value
         
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE='changeme')
+            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
         )
         
-        monitor.start_monitoring(process)
+        # Start memory monitoring (non-critical)
+        try:
+            monitor.start_monitoring(process)
+        except Exception as e:
+            logger.debug(f"Memory monitoring could not start: {e}")
         
         # Wait for completion and log output
         output, _ = process.communicate()
         
-        max_memory = monitor.stop_monitoring()
+        # Stop memory monitoring (non-critical)
+        try:
+            max_memory = monitor.stop_monitoring()
+        except Exception as e:
+            logger.debug(f"Memory monitoring could not complete: {e}")
+            max_memory = 1.0  # Fallback value
+        
         duration = int(time.time() - start_time)
         
         if process.returncode != 0:
@@ -331,18 +365,31 @@ class BackupExecutor:
         
         start_time = time.time()
         monitor = MemoryMonitor('borg prune')
+        max_memory = 1.0  # Default fallback value
         
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE='changeme')
+            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
         )
         
-        monitor.start_monitoring(process)
+        # Start memory monitoring (non-critical)
+        try:
+            monitor.start_monitoring(process)
+        except Exception as e:
+            logger.debug(f"Memory monitoring could not start: {e}")
+        
         output, _ = process.communicate()
-        max_memory = monitor.stop_monitoring()
+        
+        # Stop memory monitoring (non-critical)
+        try:
+            max_memory = monitor.stop_monitoring()
+        except Exception as e:
+            logger.debug(f"Memory monitoring could not complete: {e}")
+            max_memory = 1.0  # Fallback value
+        
         duration = int(time.time() - start_time)
         
         if process.returncode != 0:
@@ -361,18 +408,31 @@ class BackupExecutor:
         
         start_time = time.time()
         monitor = MemoryMonitor('borg compact')
+        max_memory = 1.0  # Default fallback value
         
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE='changeme')
+            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
         )
         
-        monitor.start_monitoring(process)
+        # Start memory monitoring (non-critical)
+        try:
+            monitor.start_monitoring(process)
+        except Exception as e:
+            logger.debug(f"Memory monitoring could not start: {e}")
+        
         output, _ = process.communicate()
-        max_memory = monitor.stop_monitoring()
+        
+        # Stop memory monitoring (non-critical)
+        try:
+            max_memory = monitor.stop_monitoring()
+        except Exception as e:
+            logger.debug(f"Memory monitoring could not complete: {e}")
+            max_memory = 1.0  # Fallback value
+        
         duration = int(time.time() - start_time)
         
         if process.returncode != 0:
@@ -407,18 +467,31 @@ class BackupExecutor:
             
             start_time = time.time()
             monitor = MemoryMonitor('borg create db')
+            max_memory = 1.0  # Default fallback value
             
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                env=dict(os.environ, BORG_PASSPHRASE='changeme')
+                env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
             )
             
-            monitor.start_monitoring(process)
+            # Start memory monitoring (non-critical)
+            try:
+                monitor.start_monitoring(process)
+            except Exception as e:
+                logger.debug(f"Memory monitoring could not start: {e}")
+            
             output, _ = process.communicate()
-            max_memory = monitor.stop_monitoring()
+            
+            # Stop memory monitoring (non-critical)
+            try:
+                max_memory = monitor.stop_monitoring()
+            except Exception as e:
+                logger.debug(f"Memory monitoring could not complete: {e}")
+                max_memory = 1.0  # Fallback value
+            
             duration = int(time.time() - start_time)
             
             if process.returncode != 0:
@@ -455,7 +528,7 @@ class BackupExecutor:
             cmd,
             capture_output=True,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE='changeme')
+            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
         )
         
         if process.returncode != 0:

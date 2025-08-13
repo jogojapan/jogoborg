@@ -23,6 +23,7 @@ class _JobDialogState extends State<JobDialog> {
   final _keepYearlyController = TextEditingController();
   final _preCommandController = TextEditingController();
   final _postCommandController = TextEditingController();
+  final _repositoryPassphraseController = TextEditingController();
   
   List<String> sourceDirs = [];
   Map<String, dynamic>? s3Config;
@@ -50,6 +51,7 @@ class _JobDialogState extends State<JobDialog> {
       _keepYearlyController.text = (job['keep_yearly'] ?? 1).toString();
       _preCommandController.text = job['pre_command'] ?? '';
       _postCommandController.text = job['post_command'] ?? '';
+      _repositoryPassphraseController.text = job['repository_passphrase'] ?? '';
       
       if (job['source_directories'] is List) {
         sourceDirs = List<String>.from(job['source_directories']);
@@ -83,6 +85,7 @@ class _JobDialogState extends State<JobDialog> {
     _keepYearlyController.dispose();
     _preCommandController.dispose();
     _postCommandController.dispose();
+    _repositoryPassphraseController.dispose();
     super.dispose();
   }
 
@@ -92,6 +95,13 @@ class _JobDialogState extends State<JobDialog> {
     if (sourceDirs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please add at least one source directory')),
+      );
+      return;
+    }
+    
+    if (_repositoryPassphraseController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Repository passphrase is required')),
       );
       return;
     }
@@ -113,6 +123,7 @@ class _JobDialogState extends State<JobDialog> {
         'source_directories': sourceDirs,
         'pre_command': _preCommandController.text,
         'post_command': _postCommandController.text,
+        'repository_passphrase': _repositoryPassphraseController.text,
         's3_config': s3Config,
         'db_config': dbConfig,
       };
@@ -245,6 +256,33 @@ class _JobDialogState extends State<JobDialog> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Repository passphrase
+                    TextFormField(
+                      controller: _repositoryPassphraseController,
+                      decoration: const InputDecoration(
+                        labelText: 'Repository Passphrase',
+                        hintText: 'Enter a strong passphrase for Borg encryption',
+                        border: OutlineInputBorder(),
+                        helperText: 'This passphrase encrypts your backups. Keep it safe!',
+                      ),
+                      obscureText: true,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      keyboardType: TextInputType.visiblePassword,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.newPassword],
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Repository passphrase is required';
+                        }
+                        if (value.length < 8) {
+                          return 'Passphrase must be at least 8 characters';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 16),
                     
