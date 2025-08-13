@@ -85,13 +85,14 @@ RUN pip3 install \
 # Create required directories
 RUN mkdir -p /sourcespace /borgspace /config /log
 
-# Set up entrypoint
+# Set up entrypoint and health check
 COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY health-check.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/health-check.sh
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:${JOGOBORG_WEB_PORT:-8080}/health || exit 1
+    CMD /usr/local/bin/health-check.sh
 
 # Expose configurable port
 EXPOSE ${JOGOBORG_WEB_PORT:-8080}
