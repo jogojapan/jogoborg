@@ -41,7 +41,7 @@ services:
     image: jogoborg:latest
     container_name: jogoborg
     ports:
-      - "8080:8080"
+      - "8080:8080"  # Change to "host_port:container_port" as needed
     volumes:
       # Source directories to backup (read-only recommended)
       - /path/to/source1:/sourcespace/source1:ro
