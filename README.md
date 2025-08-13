@@ -338,7 +338,7 @@ This project is designed to be extensible:
 
 ## License
 
-[Specify your license here]
+MIT License. See LICENSE file.
 
 ## Support
 
