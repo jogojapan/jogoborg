@@ -543,7 +543,8 @@ class BackupExecutor:
             logger.info("S3 sync completed successfully")
         except Exception as e:
             logger.error(f"S3 sync failed: {e}")
-            # Don't raise exception - backup is still valid even if S3 sync fails
+            # Re-raise exception so backup job is marked as failed
+            raise Exception(f"S3 sync failed: {e}")
 
     def _execute_command(self, command, logger):
         """Execute a shell command."""

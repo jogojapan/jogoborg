@@ -128,20 +128,30 @@ endpoint = {s3_config['endpoint']}
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             universal_newlines=True
         )
         
-        # Log output in real-time
-        for line in iter(process.stdout.readline, ''):
-            if line.strip():
-                logger.debug(f"rclone: {line.strip()}")
+        # Capture both stdout and stderr
+        stdout, stderr = process.communicate()
         
-        process.wait()
+        # Log all output at INFO level for better visibility
+        if stdout:
+            for line in stdout.strip().split('\n'):
+                if line.strip():
+                    logger.info(f"rclone: {line.strip()}")
+        
+        if stderr:
+            for line in stderr.strip().split('\n'):
+                if line.strip():
+                    logger.error(f"rclone error: {line.strip()}")
         
         if process.returncode != 0:
-            raise Exception(f"rclone sync failed with return code {process.returncode}")
+            error_msg = f"rclone sync failed with return code {process.returncode}"
+            if stderr:
+                error_msg += f". Errors: {stderr.strip()}"
+            raise Exception(error_msg)
 
     def _calculate_max_age(self, last_sync_time):
         """Calculate max-age parameter for rclone based on last sync time."""
