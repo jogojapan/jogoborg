@@ -114,6 +114,49 @@ class _JobsScreenState extends State<JobsScreen> {
     }
   }
 
+  Future<void> _triggerJob(Map<String, dynamic> job) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Run Job Now'),
+        content: Text('Are you sure you want to trigger job "${job['name']}" right now?\n\nThis will start the backup process immediately.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.green),
+            child: const Text('Run Now'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final apiService = context.read<ApiService>();
+      final authService = context.read<AuthService>();
+      
+      await apiService.post('/jobs/${job['id']}/trigger', {}, token: authService.token);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Job "${job['name']}" has been triggered and is running in the background')),
+        );
+        _loadJobs(); // Refresh the job list to show updated status
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to trigger job: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -172,6 +215,7 @@ class _JobsScreenState extends State<JobsScreen> {
                         job: job,
                         onEdit: () => _editJob(job),
                         onDelete: () => _deleteJob(job),
+                        onTrigger: () => _triggerJob(job),
                       );
                     },
                   ),
@@ -184,11 +228,13 @@ class _JobCard extends StatelessWidget {
   final Map<String, dynamic> job;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+  final VoidCallback onTrigger;
 
   const _JobCard({
     required this.job,
     required this.onEdit,
     required this.onDelete,
+    required this.onTrigger,
   });
 
   @override
@@ -231,6 +277,9 @@ class _JobCard extends StatelessWidget {
                 PopupMenuButton<String>(
                   onSelected: (value) {
                     switch (value) {
+                      case 'trigger':
+                        onTrigger();
+                        break;
                       case 'edit':
                         onEdit();
                         break;
@@ -240,6 +289,16 @@ class _JobCard extends StatelessWidget {
                     }
                   },
                   itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'trigger',
+                      child: Row(
+                        children: [
+                          Icon(Icons.play_arrow, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('Run Now', style: TextStyle(color: Colors.green)),
+                        ],
+                      ),
+                    ),
                     const PopupMenuItem(
                       value: 'edit',
                       child: Row(
@@ -301,14 +360,29 @@ class _JobCard extends StatelessWidget {
             const SizedBox(height: 12),
             _LastRunsSection(jobId: job['id']),
             
-            // Details button
+            // Action buttons
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: onEdit,
-                child: const Text('Details'),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: onTrigger,
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Run Now'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.green,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: onEdit,
+                    child: const Text('Details'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

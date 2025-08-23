@@ -22,8 +22,23 @@ class S3Syncer:
             
             # Determine source and destination paths
             repo_name = os.path.basename(repo_path)
-            s3_bucket = s3_config['bucket']
-            s3_path = f"{remote_name}:{s3_bucket}/{repo_name}"
+            s3_bucket_raw = s3_config['bucket']
+            
+            # Parse bucket field to handle s3:// URLs and extract bucket name and prefix
+            if s3_bucket_raw.startswith('s3://'):
+                # Remove s3:// prefix and split into bucket and path
+                bucket_and_path = s3_bucket_raw[5:]  # Remove 's3://'
+                if '/' in bucket_and_path:
+                    bucket_name = bucket_and_path.split('/')[0]
+                    prefix_path = '/'.join(bucket_and_path.split('/')[1:])
+                    # Ensure no double slashes in path construction
+                    s3_path = f"{remote_name}:{bucket_name}/{prefix_path.strip('/')}/{repo_name}"
+                else:
+                    # Just bucket name, no prefix
+                    s3_path = f"{remote_name}:{bucket_and_path}/{repo_name}"
+            else:
+                # Assume it's already just the bucket name/path - handle potential slashes
+                s3_path = f"{remote_name}:{s3_bucket_raw.strip('/')}/{repo_name}"
             
             # Run rclone sync with options to only copy modified files
             self._run_rclone_sync(repo_path, s3_path, logger)
@@ -56,13 +71,14 @@ class S3Syncer:
         
         # Create new remote configuration
         if provider == 'aws':
+            region = s3_config.get('region', 'us-east-1')
             remote_config = f"""
 [{remote_name}]
 type = s3
 provider = AWS
 access_key_id = {s3_config['access_key']}
 secret_access_key = {s3_config['secret_key']}
-region = us-east-1
+region = {region}
 storage_class = {s3_config.get('storage_class', 'STANDARD')}
 """
         elif provider == 'minio':
@@ -136,16 +152,28 @@ endpoint = {s3_config['endpoint']}
         # Capture both stdout and stderr
         stdout, stderr = process.communicate()
         
-        # Log all output at INFO level for better visibility
+        # Log stdout at appropriate levels based on content
         if stdout:
             for line in stdout.strip().split('\n'):
                 if line.strip():
-                    logger.info(f"rclone: {line.strip()}")
+                    line_content = line.strip()
+                    # Log INFO and NOTICE messages at info level, others at debug
+                    if 'INFO' in line_content or 'NOTICE' in line_content:
+                        logger.info(f"rclone: {line_content}")
+                    else:
+                        logger.debug(f"rclone: {line_content}")
         
+        # Only log stderr as errors if they contain actual error keywords
         if stderr:
             for line in stderr.strip().split('\n'):
                 if line.strip():
-                    logger.error(f"rclone error: {line.strip()}")
+                    line_content = line.strip()
+                    if 'ERROR' in line_content.upper() or 'FATAL' in line_content.upper():
+                        logger.error(f"rclone error: {line_content}")
+                    elif 'WARNING' in line_content.upper() or 'WARN' in line_content.upper():
+                        logger.warning(f"rclone warning: {line_content}")
+                    else:
+                        logger.info(f"rclone: {line_content}")
         
         if process.returncode != 0:
             error_msg = f"rclone sync failed with return code {process.returncode}"
@@ -268,7 +296,23 @@ endpoint = {s3_config['endpoint']}
         """Restore a repository from S3 to local storage."""
         try:
             remote_name = self._create_rclone_config(s3_config)
-            s3_path = f"{remote_name}:{s3_config['bucket']}/{repo_name}"
+            s3_bucket_raw = s3_config['bucket']
+            
+            # Parse bucket field to handle s3:// URLs and extract bucket name and prefix
+            if s3_bucket_raw.startswith('s3://'):
+                # Remove s3:// prefix and split into bucket and path
+                bucket_and_path = s3_bucket_raw[5:]  # Remove 's3://'
+                if '/' in bucket_and_path:
+                    bucket_name = bucket_and_path.split('/')[0]
+                    prefix_path = '/'.join(bucket_and_path.split('/')[1:])
+                    # Ensure no double slashes in path construction
+                    s3_path = f"{remote_name}:{bucket_name}/{prefix_path.strip('/')}/{repo_name}"
+                else:
+                    # Just bucket name, no prefix
+                    s3_path = f"{remote_name}:{bucket_and_path}/{repo_name}"
+            else:
+                # Assume it's already just the bucket name/path - handle potential slashes
+                s3_path = f"{remote_name}:{s3_bucket_raw.strip('/')}/{repo_name}"
             
             # Ensure local directory exists
             os.makedirs(local_path, exist_ok=True)

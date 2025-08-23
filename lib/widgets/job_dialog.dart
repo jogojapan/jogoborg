@@ -549,6 +549,7 @@ class _S3ConfigDialog extends StatefulWidget {
 class _S3ConfigDialogState extends State<_S3ConfigDialog> {
   final _endpointController = TextEditingController();
   final _bucketController = TextEditingController();
+  final _regionController = TextEditingController();
   final _accessKeyController = TextEditingController();
   final _secretKeyController = TextEditingController();
   String _storageClass = 'STANDARD';
@@ -561,10 +562,13 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
       final config = widget.initialConfig!;
       _endpointController.text = config['endpoint'] ?? '';
       _bucketController.text = config['bucket'] ?? '';
+      _regionController.text = config['region'] ?? 'us-east-1';
       _accessKeyController.text = config['access_key'] ?? '';
       _secretKeyController.text = config['secret_key'] ?? '';
       _storageClass = config['storage_class'] ?? 'STANDARD';
       _provider = config['provider'] ?? 'aws';
+    } else {
+      _regionController.text = 'us-east-1';
     }
   }
 
@@ -610,6 +614,17 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               ),
             ),
             const SizedBox(height: 16),
+            
+            if (_provider == 'aws')
+              TextFormField(
+                controller: _regionController,
+                decoration: const InputDecoration(
+                  labelText: 'AWS Region',
+                  hintText: 'e.g., us-east-1, eu-north-1',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            if (_provider == 'aws') const SizedBox(height: 16),
             
             TextFormField(
               controller: _accessKeyController,
@@ -659,6 +674,7 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               'provider': _provider,
               'endpoint': _endpointController.text,
               'bucket': _bucketController.text,
+              'region': _regionController.text,
               'access_key': _accessKeyController.text,
               'secret_key': _secretKeyController.text,
               'storage_class': _storageClass,

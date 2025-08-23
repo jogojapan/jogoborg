@@ -18,6 +18,7 @@ sys.path.append('/app')
 from scripts.notification_service import NotificationService
 from scripts.database_dumper import DatabaseDumper
 from scripts.s3_sync import S3Syncer
+from scripts.backup_executor import BackupExecutor
 from scripts.init_gpg import encrypt_data, decrypt_data
 
 class JogoborgHTTPHandler(BaseHTTPRequestHandler):
@@ -93,6 +94,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._handle_test_webhook(data)
             elif path == '/api/database/test':
                 self._handle_test_database(data)
+            elif path.startswith('/api/jobs/') and path.endswith('/trigger'):
+                job_id = path.split('/')[-2]
+                self._handle_trigger_job(job_id)
             else:
                 self._send_error(404, "Not found")
                 
@@ -485,6 +489,77 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logging.error(f"Error deleting job: {e}")
             self._send_error(500, "Failed to delete job")
+
+    def _handle_trigger_job(self, job_id):
+        """Trigger a backup job to run immediately."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            try:
+                # Get the job details
+                cursor.execute('SELECT * FROM backup_jobs WHERE id = ?', (job_id,))
+                row = cursor.fetchone()
+                
+                if not row:
+                    self._send_error(404, "Job not found")
+                    return
+                
+                # Convert row to dictionary
+                columns = [desc[0] for desc in cursor.description]
+                job = dict(zip(columns, row))
+                
+                # Decrypt encrypted fields if they exist
+                if job['s3_config']:
+                    try:
+                        job['s3_config'] = json.loads(decrypt_data(job['s3_config']))
+                    except Exception:
+                        job['s3_config'] = None
+                
+                if job['db_config']:
+                    try:
+                        job['db_config'] = json.loads(decrypt_data(job['db_config']))
+                    except Exception:
+                        job['db_config'] = None
+                
+                if job['repository_passphrase']:
+                    try:
+                        job['repository_passphrase'] = decrypt_data(job['repository_passphrase'])
+                    except Exception:
+                        self._send_error(500, "Failed to decrypt repository passphrase")
+                        return
+                
+                # Convert source_directories from JSON string to list if needed
+                if isinstance(job['source_directories'], str):
+                    try:
+                        job['source_directories'] = json.loads(job['source_directories'])
+                    except json.JSONDecodeError:
+                        # Fallback to comma-separated string parsing for backwards compatibility
+                        job['source_directories'] = [d.strip() for d in job['source_directories'].split(',')]
+                
+            finally:
+                conn.close()
+            
+            # Execute the job in a background thread to avoid blocking the web server
+            def run_job():
+                try:
+                    executor = BackupExecutor()
+                    executor.execute_job(job)
+                    logging.info(f"Manual job trigger completed successfully for job: {job['name']}")
+                except Exception as e:
+                    logging.error(f"Manual job trigger failed for job {job['name']}: {e}")
+            
+            # Start the job in a separate thread
+            job_thread = threading.Thread(target=run_job, daemon=True)
+            job_thread.start()
+            
+            self._send_json_response({
+                'message': f'Job "{job["name"]}" has been triggered and is running in the background'
+            })
+            
+        except Exception as e:
+            logging.error(f"Error triggering job: {e}")
+            self._send_error(500, "Failed to trigger job")
 
     def _handle_get_job_logs(self, job_id, query_string):
         """Get logs for a specific job."""
