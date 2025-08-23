@@ -186,6 +186,23 @@ class _JobDialogState extends State<JobDialog> {
     }
   }
 
+  void _configureCommands() async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => _CommandsConfigDialog(
+        preCommand: _preCommandController.text,
+        postCommand: _postCommandController.text,
+      ),
+    );
+    
+    if (result != null) {
+      setState(() {
+        _preCommandController.text = result['preCommand'] ?? '';
+        _postCommandController.text = result['postCommand'] ?? '';
+      });
+    }
+  }
+
   void _configureDatabase() async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -299,11 +316,12 @@ class _JobDialogState extends State<JobDialog> {
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
-                          onPressed: () {
-                            // Show commands dialog
-                          },
+                          onPressed: _configureCommands,
                           icon: const Icon(Icons.terminal),
-                          label: const Text('Commands'),
+                          label: Text((_preCommandController.text.isNotEmpty || _postCommandController.text.isNotEmpty) ? 'Commands Configured' : 'Configure Commands'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: (_preCommandController.text.isNotEmpty || _postCommandController.text.isNotEmpty) ? Colors.green : null,
+                          ),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
@@ -695,6 +713,97 @@ class _DatabaseConfigDialog extends StatefulWidget {
 
   @override
   State<_DatabaseConfigDialog> createState() => _DatabaseConfigDialogState();
+}
+
+class _CommandsConfigDialog extends StatefulWidget {
+  final String preCommand;
+  final String postCommand;
+
+  const _CommandsConfigDialog({
+    required this.preCommand,
+    required this.postCommand,
+  });
+
+  @override
+  State<_CommandsConfigDialog> createState() => _CommandsConfigDialogState();
+}
+
+class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
+  final _preCommandController = TextEditingController();
+  final _postCommandController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _preCommandController.text = widget.preCommand;
+    _postCommandController.text = widget.postCommand;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Configure Commands'),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Configure commands to run before and after backup execution. Use these to suspend/resume services during backups.',
+              style: TextStyle(color: Colors.grey, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            
+            TextFormField(
+              controller: _preCommandController,
+              decoration: const InputDecoration(
+                labelText: 'Pre-Command (runs before backup)',
+                hintText: 'docker stop myservice',
+                border: OutlineInputBorder(),
+                helperText: 'Command to run before the backup starts (e.g., suspend services)',
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 16),
+            
+            TextFormField(
+              controller: _postCommandController,
+              decoration: const InputDecoration(
+                labelText: 'Post-Command (runs after backup)',
+                hintText: 'docker start myservice',
+                border: OutlineInputBorder(),
+                helperText: 'Command to run after backup completes (success or failure)',
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 16),
+            
+            const Text(
+              'Note: Commands will run with a 5-minute timeout. Non-zero exit codes will be logged as warnings but won\'t fail the backup.',
+              style: TextStyle(color: Colors.orange, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            final result = {
+              'preCommand': _preCommandController.text,
+              'postCommand': _postCommandController.text,
+            };
+            Navigator.of(context).pop(result);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {

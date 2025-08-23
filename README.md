@@ -164,9 +164,16 @@ Include database dumps in your backups:
 
 ##### Pre/Post Commands
 Execute custom commands before and after backups:
-- Docker container management
-- Application maintenance mode
-- Custom notifications
+- **Pre-Command**: Runs before backup starts (e.g., `docker stop myservice`)
+- **Post-Command**: Runs after backup completes (success or failure, e.g., `docker start myservice`)
+- **Docker Support**: Docker CLI is available for container management
+- **Timeout**: Commands timeout after 5 minutes
+- **Error Handling**: Non-zero exit codes are logged as warnings but don't fail the backup
+
+**Docker Commands**: The container includes Docker CLI and mounts the Docker socket, allowing commands like:
+- `docker stop mycontainer`
+- `docker exec mycontainer /app/maintenance.sh`
+- `docker-compose -f /path/to/compose.yml stop service`
 
 ### Schedule Format
 

@@ -28,6 +28,22 @@ if [ ! -z "$GPG_PASSPHRASE" ] && [ -z "$JOGOBORG_GPG_PASSPHRASE" ]; then
     export GPG_PASSPHRASE=$GPG_PASSPHRASE
 fi
 
+# Setup Docker socket access if available
+if [ -S /var/run/docker.sock ]; then
+    echo "Setting up Docker socket access..."
+    # Get the group ID of the docker socket
+    DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+    # Create docker group with the same GID as host if it doesn't exist
+    if ! getent group $DOCKER_GID > /dev/null 2>&1; then
+        groupadd -g $DOCKER_GID docker
+    fi
+    # Add root user to the docker group
+    usermod -a -G $DOCKER_GID root
+    echo "Docker socket access configured."
+else
+    echo "Docker socket not available - Docker commands will not work."
+fi
+
 # Initialize configuration directory and run database migrations
 echo "Initializing database and running migrations..."
 python3 /app/scripts/init_db.py
