@@ -50,6 +50,12 @@ def init_database():
         compact_max_memory INTEGER,
         db_dump_duration INTEGER,
         db_dump_max_memory INTEGER,
+        db_archive_duration INTEGER,
+        db_archive_max_memory INTEGER,
+        db_prune_duration INTEGER,
+        db_prune_max_memory INTEGER,
+        db_compact_duration INTEGER,
+        db_compact_max_memory INTEGER,
         error_message TEXT,
         FOREIGN KEY (job_id) REFERENCES backup_jobs (id)
     )
@@ -151,6 +157,27 @@ def _migrate_database(cursor):
         print("Adding repository_passphrase column to backup_jobs table...")
         cursor.execute("ALTER TABLE backup_jobs ADD COLUMN repository_passphrase TEXT")
         print("Migration completed: repository_passphrase column added.")
+    
+    # Check if new database backup columns exist, add them if they don't
+    cursor.execute("PRAGMA table_info(job_logs)")
+    log_columns = [row[1] for row in cursor.fetchall()]
+    
+    if 'db_archive_duration' not in log_columns:
+        print("Adding separate database backup columns to job_logs table...")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_archive_duration INTEGER")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_archive_max_memory INTEGER") 
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_prune_duration INTEGER")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_prune_max_memory INTEGER")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_compact_duration INTEGER")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_compact_max_memory INTEGER")
+        print("Migration completed: database backup tracking columns added.")
+    
+    # Check specifically for db_compact columns in case they were missing from earlier migration
+    if 'db_compact_duration' not in log_columns:
+        print("Adding missing database compact columns to job_logs table...")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_compact_duration INTEGER")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN db_compact_max_memory INTEGER")
+        print("Migration completed: database compact tracking columns added.")
 
 if __name__ == '__main__':
     init_database()

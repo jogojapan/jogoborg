@@ -77,8 +77,18 @@ class BackupExecutor:
             # Handle database dumps if configured
             db_dump_duration = None
             db_dump_max_memory = None
+            db_archive_duration = None  
+            db_archive_max_memory = None
+            db_prune_duration = None
+            db_prune_max_memory = None
+            db_compact_duration = None
+            db_compact_max_memory = None
+            
             if job.get('db_config'):
-                db_dump_duration, db_dump_max_memory = self._execute_db_backup(
+                (db_dump_duration, db_dump_max_memory, 
+                 db_archive_duration, db_archive_max_memory,
+                 db_prune_duration, db_prune_max_memory,
+                 db_compact_duration, db_compact_max_memory) = self._execute_db_backup(
                     job, repo_path, started_at, job_logger
                 )
             
@@ -98,7 +108,10 @@ class BackupExecutor:
                 create_duration, create_max_memory,
                 prune_duration, prune_max_memory,
                 compact_duration, compact_max_memory,
-                db_dump_duration, db_dump_max_memory
+                db_dump_duration, db_dump_max_memory,
+                db_archive_duration, db_archive_max_memory,
+                db_prune_duration, db_prune_max_memory,
+                db_compact_duration, db_compact_max_memory
             )
             
             job_logger.info(f"Backup job completed successfully: {job_name}")
@@ -113,6 +126,12 @@ class BackupExecutor:
                 'compact_max_memory': compact_max_memory,
                 'db_dump_duration': db_dump_duration,
                 'db_dump_max_memory': db_dump_max_memory,
+                'db_archive_duration': db_archive_duration,
+                'db_archive_max_memory': db_archive_max_memory,
+                'db_prune_duration': db_prune_duration,
+                'db_prune_max_memory': db_prune_max_memory,
+                'db_compact_duration': db_compact_duration,
+                'db_compact_max_memory': db_compact_max_memory,
             })
             
         except Exception as e:
@@ -164,6 +183,9 @@ class BackupExecutor:
                          prune_duration=None, prune_max_memory=None,
                          compact_duration=None, compact_max_memory=None,
                          db_dump_duration=None, db_dump_max_memory=None,
+                         db_archive_duration=None, db_archive_max_memory=None,
+                         db_prune_duration=None, db_prune_max_memory=None,
+                         db_compact_duration=None, db_compact_max_memory=None,
                          error_message=None):
         """Update a log entry with completion details."""
         conn = sqlite3.connect(self.db_path)
@@ -182,6 +204,12 @@ class BackupExecutor:
                 compact_max_memory = ?,
                 db_dump_duration = ?,
                 db_dump_max_memory = ?,
+                db_archive_duration = ?,
+                db_archive_max_memory = ?,
+                db_prune_duration = ?,
+                db_prune_max_memory = ?,
+                db_compact_duration = ?,
+                db_compact_max_memory = ?,
                 error_message = ?
             WHERE id = ?
             ''', (
@@ -190,11 +218,40 @@ class BackupExecutor:
                 prune_duration, prune_max_memory,
                 compact_duration, compact_max_memory,
                 db_dump_duration, db_dump_max_memory,
+                db_archive_duration, db_archive_max_memory,
+                db_prune_duration, db_prune_max_memory,
+                db_compact_duration, db_compact_max_memory,
                 error_message, log_entry_id
             ))
             
             conn.commit()
             
+        except sqlite3.OperationalError as e:
+            if "no such column" in str(e):
+                # Database schema is outdated, fall back to basic update
+                self.logger.error(f"Database schema outdated: {e}. Please run database migration.")
+                cursor.execute('''
+                UPDATE job_logs SET
+                    finished_at = ?,
+                    status = ?,
+                    create_duration = ?,
+                    create_max_memory = ?,
+                    prune_duration = ?,
+                    prune_max_memory = ?,
+                    compact_duration = ?,
+                    compact_max_memory = ?,
+                    error_message = ?
+                WHERE id = ?
+                ''', (
+                    finished_at.isoformat(), status,
+                    create_duration, create_max_memory,
+                    prune_duration, prune_max_memory,
+                    compact_duration, compact_max_memory,
+                    error_message, log_entry_id
+                ))
+                conn.commit()
+            else:
+                raise
         finally:
             conn.close()
 
@@ -337,17 +394,24 @@ class BackupExecutor:
         return duration, int(max_memory)
 
     def _execute_db_backup(self, job, repo_path, started_at, logger):
-        """Execute database backup and create separate archive."""
+        """Execute database backup with separate step tracking."""
         logger.info("Starting database backup")
         
         db_config = job['db_config']
+        
+        # Step 1: Create database dumps
+        import time
+        dump_start = time.time()
         dump_files = self.db_dumper.create_dumps(db_config, logger)
+        dump_duration = int(time.time() - dump_start)
         
         if not dump_files:
-            return None, None
+            return None, None, None, None, None, None, None, None
         
+        logger.info(f"Database dump completed in {dump_duration}s")
+        
+        # Step 2: Create database archive  
         try:
-            # Create database archive
             archive_name = f"{job['name']}_db_{started_at.strftime('%Y%m%d%H%MZ')}"
             
             borg_cmd = [
@@ -375,14 +439,18 @@ class BackupExecutor:
                 raise Exception(f"Database archive creation failed: {stdout} {stderr}")
             
             # Parse time output for duration and memory
-            duration, max_memory = self._parse_time_output(stderr, logger)
+            archive_duration, archive_max_memory = self._parse_time_output(stderr, logger)
             
-            logger.info(f"Database archive created in {duration}s, max memory: {max_memory:.1f}MB")
+            logger.info(f"Database archive created in {archive_duration}s, max memory: {archive_max_memory:.1f}MB")
             
-            # Prune database archives
-            self._prune_db_archives(job, repo_path, logger)
+            # Step 3: Prune database archives
+            prune_duration, prune_max_memory = self._prune_db_archives_timed(job, repo_path, logger)
             
-            return duration, int(max_memory)
+            # Step 4: Compact database repository
+            compact_duration, compact_max_memory = self._execute_db_compact_timed(job, repo_path, logger)
+            
+            return (dump_duration, 1, archive_duration, int(archive_max_memory), 
+                   prune_duration, prune_max_memory, compact_duration, compact_max_memory)
             
         finally:
             # Clean up dump files
@@ -413,6 +481,74 @@ class BackupExecutor:
         
         if process.returncode != 0:
             logger.warning(f"Database archive pruning failed: {process.stderr}")
+
+    def _prune_db_archives_timed(self, job, repo_path, logger):
+        """Prune database archives with time/memory tracking."""
+        logger.info("Pruning database archives")
+        
+        borg_cmd = [
+            'borg', 'prune',
+            '--list',
+            '--glob-archives', f"{job['name']}_db_*",
+            f'--keep-daily={job["keep_daily"]}',
+            f'--keep-monthly={job["keep_monthly"]}',
+            f'--keep-yearly={job["keep_yearly"]}',
+            repo_path
+        ]
+        
+        # Wrap with time command for precise measurement
+        cmd = ['/usr/bin/time', '-v'] + borg_cmd
+        
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+        )
+        
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            logger.warning(f"Database archive pruning failed: {stdout} {stderr}")
+            return 0, 1  # Return minimal values on failure
+        
+        # Parse time output for duration and memory
+        duration, max_memory = self._parse_time_output(stderr, logger)
+        
+        logger.info(f"Database archive pruning completed in {duration}s, max memory: {max_memory:.1f}MB")
+        
+        return duration, int(max_memory)
+
+    def _execute_db_compact_timed(self, job, repo_path, logger):
+        """Compact database repository with time/memory tracking."""
+        logger.info("Compacting database repository")
+        
+        borg_cmd = ['borg', 'compact', repo_path]
+        
+        # Wrap with time command for precise measurement
+        cmd = ['/usr/bin/time', '-v'] + borg_cmd
+        
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+        )
+        
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            logger.warning(f"Database repository compacting failed: {stdout} {stderr}")
+            return 0, 1  # Return minimal values on failure
+        
+        # Parse time output for duration and memory
+        duration, max_memory = self._parse_time_output(stderr, logger)
+        
+        logger.info(f"Database repository compacting completed in {duration}s, max memory: {max_memory:.1f}MB")
+        
+        return duration, int(max_memory)
 
     def _execute_s3_sync(self, job, repo_path, logger):
         """Sync repository to S3."""
@@ -523,8 +659,15 @@ Statistics:
 - Compact: {stats['compact_duration']}s, {stats['compact_max_memory']}MB
 """
         
-        if stats.get('db_dump_duration'):
+        # Include database backup stats if they exist and are not None
+        if (stats.get('db_dump_duration') is not None and 
+            stats.get('db_archive_duration') is not None and 
+            stats.get('db_prune_duration') is not None and
+            stats.get('db_compact_duration') is not None):
             message += f"- DB Dump: {stats['db_dump_duration']}s, {stats['db_dump_max_memory']}MB\n"
+            message += f"- DB Archive: {stats['db_archive_duration']}s, {stats['db_archive_max_memory']}MB\n"
+            message += f"- DB Prune: {stats['db_prune_duration']}s, {stats['db_prune_max_memory']}MB\n"
+            message += f"- DB Compact: {stats['db_compact_duration']}s, {stats['db_compact_max_memory']}MB\n"
         
         try:
             self.notification_service.send_notification(
