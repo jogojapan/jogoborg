@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y \
     sudo \
     apt-transport-https \
     lsb-release \
+    time \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Docker CLI
@@ -87,7 +88,6 @@ USER root
 # Install Python dependencies for backend services
 RUN pip3 install \
     cryptography \
-    psutil \
     requests \
     croniter
 

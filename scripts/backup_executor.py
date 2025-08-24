@@ -5,9 +5,7 @@ import subprocess
 import sqlite3
 import json
 import logging
-import threading
 import time
-import psutil
 from datetime import datetime, timezone
 
 # Add project root to Python path
@@ -17,72 +15,6 @@ from scripts.database_dumper import DatabaseDumper
 from scripts.s3_sync import S3Syncer
 from scripts.notification_service import NotificationService
 
-class MemoryMonitor:
-    def __init__(self, process_name):
-        self.process_name = process_name
-        self.max_memory = 0
-        self.running = False
-        self.process = None
-        
-    def start_monitoring(self, process):
-        """Start monitoring memory usage of a process."""
-        self.process = process
-        self.running = True
-        self.max_memory = 0
-        
-        # Only start monitoring if the process is still running
-        try:
-            if process and process.poll() is None:
-                thread = threading.Thread(target=self._monitor_loop)
-                thread.daemon = True
-                thread.start()
-            else:
-                # Process already finished, set a minimal memory value
-                self.max_memory = 1.0  # 1MB default for finished processes
-        except Exception:
-            # If we can't check process status, assume it finished quickly
-            self.max_memory = 1.0
-        
-    def stop_monitoring(self):
-        """Stop memory monitoring."""
-        self.running = False
-        # Return at least 1MB if no memory was measured (e.g., for very fast processes)
-        return max(self.max_memory, 1.0)
-        
-    def _monitor_loop(self):
-        """Main monitoring loop."""
-        psutil_process = None
-        
-        # Convert Popen to psutil.Process for memory monitoring
-        try:
-            if self.process and self.process.poll() is None:
-                psutil_process = psutil.Process(self.process.pid)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
-            # Process already finished or not accessible
-            return
-            
-        while self.running and self.process:
-            try:
-                if self.process.poll() is None:  # Process is still running
-                    if psutil_process:
-                        # Get memory usage in MB
-                        memory_info = psutil_process.memory_info()
-                        memory_mb = memory_info.rss / 1024 / 1024
-                        
-                        if memory_mb > self.max_memory:
-                            self.max_memory = memory_mb
-                            
-                    time.sleep(3)  # Check every 3 seconds
-                else:
-                    break
-                    
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                # Process finished or became inaccessible
-                break
-            except Exception as e:
-                # Don't treat memory monitoring errors as fatal
-                logging.warning(f"Memory monitoring warning for {self.process_name}: {e}")
-                break
 
 class BackupExecutor:
     def __init__(self):
@@ -289,13 +221,13 @@ class BackupExecutor:
         logger.info("Repository initialized successfully")
 
     def _execute_borg_create(self, job, repo_path, started_at, logger):
-        """Execute borg create command with memory monitoring."""
+        """Execute borg create command with time/memory monitoring."""
         archive_name = f"{job['name']}_{started_at.strftime('%Y%m%d%H%MZ')}"
         
         logger.info(f"Creating archive: {archive_name}")
         
         # Build borg create command
-        cmd = [
+        borg_cmd = [
             'borg', 'create',
             '--compression', job['compression'],
             '--stats',
@@ -303,57 +235,44 @@ class BackupExecutor:
         ]
         
         # Add source directories
-        cmd.extend(job['source_directories'])
+        borg_cmd.extend(job['source_directories'])
         
         # Add exclude patterns
         for pattern in job.get('exclude_patterns', []):
             if pattern.strip():
-                cmd.extend(['--exclude', pattern.strip()])
+                borg_cmd.extend(['--exclude', pattern.strip()])
         
-        # Execute with memory monitoring
-        start_time = time.time()
-        monitor = MemoryMonitor('borg create')
-        max_memory = 1.0  # Default fallback value
+        # Wrap with time command for precise measurement
+        cmd = ['/usr/bin/time', '-v'] + borg_cmd
         
+        # Execute with time monitoring
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
         )
         
-        # Start memory monitoring (non-critical)
-        try:
-            monitor.start_monitoring(process)
-        except Exception as e:
-            logger.debug(f"Memory monitoring could not start: {e}")
-        
-        # Wait for completion and log output
-        output, _ = process.communicate()
-        
-        # Stop memory monitoring (non-critical)
-        try:
-            max_memory = monitor.stop_monitoring()
-        except Exception as e:
-            logger.debug(f"Memory monitoring could not complete: {e}")
-            max_memory = 1.0  # Fallback value
-        
-        duration = int(time.time() - start_time)
+        # Wait for completion
+        stdout, stderr = process.communicate()
         
         if process.returncode != 0:
-            raise Exception(f"Borg create failed: {output}")
+            raise Exception(f"Borg create failed: {stdout} {stderr}")
+        
+        # Parse time output for duration and memory
+        duration, max_memory = self._parse_time_output(stderr, logger)
         
         logger.info(f"Archive created successfully in {duration}s, max memory: {max_memory:.1f}MB")
-        logger.debug(f"Borg create output: {output}")
+        logger.debug(f"Borg create output: {stdout}")
         
         return duration, int(max_memory)
 
     def _execute_borg_prune(self, job, repo_path, logger):
-        """Execute borg prune command with memory monitoring."""
+        """Execute borg prune command with time/memory monitoring."""
         logger.info("Pruning old archives")
         
-        cmd = [
+        borg_cmd = [
             'borg', 'prune',
             '--list',
             '--glob-archives', f"{job['name']}_*",
@@ -363,83 +282,57 @@ class BackupExecutor:
             repo_path
         ]
         
-        start_time = time.time()
-        monitor = MemoryMonitor('borg prune')
-        max_memory = 1.0  # Default fallback value
+        # Wrap with time command for precise measurement
+        cmd = ['/usr/bin/time', '-v'] + borg_cmd
         
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
         )
         
-        # Start memory monitoring (non-critical)
-        try:
-            monitor.start_monitoring(process)
-        except Exception as e:
-            logger.debug(f"Memory monitoring could not start: {e}")
-        
-        output, _ = process.communicate()
-        
-        # Stop memory monitoring (non-critical)
-        try:
-            max_memory = monitor.stop_monitoring()
-        except Exception as e:
-            logger.debug(f"Memory monitoring could not complete: {e}")
-            max_memory = 1.0  # Fallback value
-        
-        duration = int(time.time() - start_time)
+        stdout, stderr = process.communicate()
         
         if process.returncode != 0:
-            raise Exception(f"Borg prune failed: {output}")
+            raise Exception(f"Borg prune failed: {stdout} {stderr}")
+        
+        # Parse time output for duration and memory
+        duration, max_memory = self._parse_time_output(stderr, logger)
         
         logger.info(f"Pruning completed in {duration}s, max memory: {max_memory:.1f}MB")
-        logger.debug(f"Borg prune output: {output}")
+        logger.debug(f"Borg prune output: {stdout}")
         
         return duration, int(max_memory)
 
     def _execute_borg_compact(self, job, repo_path, logger):
-        """Execute borg compact command with memory monitoring."""
+        """Execute borg compact command with time/memory monitoring."""
         logger.info("Compacting repository")
         
-        cmd = ['borg', 'compact', repo_path]
+        borg_cmd = ['borg', 'compact', repo_path]
         
-        start_time = time.time()
-        monitor = MemoryMonitor('borg compact')
-        max_memory = 1.0  # Default fallback value
+        # Wrap with time command for precise measurement
+        cmd = ['/usr/bin/time', '-v'] + borg_cmd
         
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
         )
         
-        # Start memory monitoring (non-critical)
-        try:
-            monitor.start_monitoring(process)
-        except Exception as e:
-            logger.debug(f"Memory monitoring could not start: {e}")
-        
-        output, _ = process.communicate()
-        
-        # Stop memory monitoring (non-critical)
-        try:
-            max_memory = monitor.stop_monitoring()
-        except Exception as e:
-            logger.debug(f"Memory monitoring could not complete: {e}")
-            max_memory = 1.0  # Fallback value
-        
-        duration = int(time.time() - start_time)
+        stdout, stderr = process.communicate()
         
         if process.returncode != 0:
-            raise Exception(f"Borg compact failed: {output}")
+            raise Exception(f"Borg compact failed: {stdout} {stderr}")
+        
+        # Parse time output for duration and memory
+        duration, max_memory = self._parse_time_output(stderr, logger)
         
         logger.info(f"Compacting completed in {duration}s, max memory: {max_memory:.1f}MB")
-        logger.debug(f"Borg compact output: {output}")
+        logger.debug(f"Borg compact output: {stdout}")
         
         return duration, int(max_memory)
 
@@ -457,45 +350,32 @@ class BackupExecutor:
             # Create database archive
             archive_name = f"{job['name']}_db_{started_at.strftime('%Y%m%d%H%MZ')}"
             
-            cmd = [
+            borg_cmd = [
                 'borg', 'create',
                 '--compression', job['compression'],
                 '--stats',
                 f'{repo_path}::{archive_name}'
             ]
-            cmd.extend(dump_files)
+            borg_cmd.extend(dump_files)
             
-            start_time = time.time()
-            monitor = MemoryMonitor('borg create db')
-            max_memory = 1.0  # Default fallback value
+            # Wrap with time command for precise measurement
+            cmd = ['/usr/bin/time', '-v'] + borg_cmd
             
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
+                stderr=subprocess.PIPE,
                 text=True,
                 env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
             )
             
-            # Start memory monitoring (non-critical)
-            try:
-                monitor.start_monitoring(process)
-            except Exception as e:
-                logger.debug(f"Memory monitoring could not start: {e}")
-            
-            output, _ = process.communicate()
-            
-            # Stop memory monitoring (non-critical)
-            try:
-                max_memory = monitor.stop_monitoring()
-            except Exception as e:
-                logger.debug(f"Memory monitoring could not complete: {e}")
-                max_memory = 1.0  # Fallback value
-            
-            duration = int(time.time() - start_time)
+            stdout, stderr = process.communicate()
             
             if process.returncode != 0:
-                raise Exception(f"Database archive creation failed: {output}")
+                raise Exception(f"Database archive creation failed: {stdout} {stderr}")
+            
+            # Parse time output for duration and memory
+            duration, max_memory = self._parse_time_output(stderr, logger)
             
             logger.info(f"Database archive created in {duration}s, max memory: {max_memory:.1f}MB")
             
@@ -591,6 +471,40 @@ class BackupExecutor:
         except Exception as e:
             logger.warning(f"Failed to wrap docker command, running as-is: {e}")
             return command
+
+    def _parse_time_output(self, time_stderr, logger):
+        """Parse time -v output to extract duration and memory usage."""
+        duration = 0
+        max_memory = 1.0  # Default fallback in MB
+        
+        try:
+            for line in time_stderr.split('\n'):
+                line = line.strip()
+                
+                # Parse elapsed time (format: "Elapsed (wall clock) time (h:mm:ss or m:ss): 0:01.23")
+                if 'Elapsed (wall clock) time' in line:
+                    time_part = line.split(': ')[-1]
+                    if ':' in time_part:
+                        parts = time_part.split(':')
+                        if len(parts) == 2:  # mm:ss.ss
+                            duration = int(float(parts[0]) * 60 + float(parts[1]))
+                        elif len(parts) == 3:  # h:mm:ss.ss
+                            duration = int(float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2]))
+                    else:
+                        # Just seconds
+                        duration = int(float(time_part))
+                
+                # Parse maximum memory usage (format: "Maximum resident set size (kbytes): 123456")
+                elif 'Maximum resident set size (kbytes)' in line:
+                    kb_value = line.split(': ')[-1]
+                    max_memory = float(kb_value) / 1024.0  # Convert KB to MB
+        
+        except Exception as e:
+            logger.debug(f"Failed to parse time output: {e}")
+            duration = 0
+            max_memory = 1.0
+        
+        return duration, max_memory
 
     def _send_success_notification(self, job, started_at, finished_at, stats):
         """Send success notification."""
