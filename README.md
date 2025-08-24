@@ -294,6 +294,17 @@ Backup jobs use cron syntax but are restricted to quarter-hour starts:
 2. Check network connectivity
 3. Verify credentials and server settings
 
+#### Missing Database Migration
+Should you get errors about missing or incomplete database migrations
+in the docker log, you may want to run a DB migration in the container
+manually:
+
+``` bash
+docker-compose exec jogoborg python3 scripts/init_db.py
+```
+
+(Replace `jogoborg` with the name you are using for the container.)
+
 ### Log Locations
 - Application logs: `/log/` directory in container
 - Access via: `docker exec jogoborg tail -f /log/scheduler.log`
@@ -326,19 +337,6 @@ Backup jobs use cron syntax but are restricted to quarter-hour starts:
 - Configure appropriate retention policies
 - Use Borg's deduplication capabilities
 - Regular repository compaction reduces storage usage
-
-## Trouhleshooting
-
-### Missing Database Migration
-Should you get errors about missing or incomplete database migrations
-in the docker log, you may want to run a DB migration in the container
-manually:
-
-``` bash
-docker-compose exec jogoborg python3 scripts/init_db.py
-```
-
-(Replace `jogoborg` with the name you are using for the container.)
 
 ## Advanced Configuration
 
