@@ -30,18 +30,9 @@ fi
 
 # Setup Docker socket access if available
 if [ -S /var/run/docker.sock ]; then
-    echo "Setting up Docker socket access..."
-    # Get the group ID of the docker socket
-    DOCKER_GID=$(stat -c %g /var/run/docker.sock)
-    # Create docker group with the same GID as host if it doesn't exist
-    if ! getent group $DOCKER_GID > /dev/null 2>&1; then
-        groupadd -g $DOCKER_GID docker
-    fi
-    # Add root user to the docker group
-    usermod -a -G $DOCKER_GID root
     echo "Docker socket access configured."
 else
-    echo "Docker socket not available - Docker commands will not work."
+    echo "Docker socket not available - Docker commands will not work. You need to map /var/run/docker.sock into the container. See README.md for details on group permissions and SELinux-related caveats."
 fi
 
 # Initialize configuration directory and run database migrations

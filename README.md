@@ -175,6 +175,8 @@ Execute custom commands before and after backups:
 - `docker exec mycontainer /app/maintenance.sh`
 - `docker-compose -f /path/to/compose.yml stop service`
 
+This will only work if the container has access to /var/run/docker.sock and is a member of the docker Linux group. If the host is running SELinux, you also need to the `label=type:container_runtime_t` security option. See `docker-compose.yml` (entries for `group_add`, `security_opt` and `/var/run/docker.sock`) for examples of how to make this work).
+
 ### Schedule Format
 
 Backup jobs use cron syntax but are restricted to quarter-hour starts:

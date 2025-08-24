@@ -5,6 +5,16 @@ services:
     build: .
     # image: jogoborg:latest  # Use this instead of build when using pre-built image
     container_name: jogoborg
+
+    # Add the docker group if you want to use docker commands as part
+    # of backup jobs:
+    group_add:
+      - 975
+    # Needed on systems running SELinux if you want to use docker
+    # commands as part of backup jobs:
+    security_opt:
+      - label=type:container_runtime_t
+
     ports:
       - "8080:8080"
     volumes:
@@ -12,6 +22,10 @@ services:
       # Example: - /home/user/documents:/sourcespace/documents:ro
       # Example: - /var/lib/docker/volumes:/sourcespace/docker-volumes:ro
       - ./example_source:/sourcespace/example:ro
+
+      # For access to docker commands as part of backup jobs (if
+      # needed):
+      - /var/run/docker.sock:/var/run/docker.sock:ro,z
       
       # Borg repositories storage (this will contain your backup repositories)
       - jogoborg_repos:/borgspace

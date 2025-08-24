@@ -549,6 +549,10 @@ class BackupExecutor:
     def _execute_command(self, command, logger):
         """Execute a shell command."""
         try:
+            # For Docker commands, ensure we have proper socket access
+            # if command.strip().startswith('docker') and os.path.exists('/var/run/docker.sock'):
+            #     command = self._wrap_docker_command(command, logger)
+            
             result = subprocess.run(
                 command,
                 shell=True,
@@ -571,6 +575,22 @@ class BackupExecutor:
         except Exception as e:
             logger.error(f"Command execution failed: {e}")
             raise
+
+    def _wrap_docker_command(self, command, logger):
+        """Wrap docker commands to ensure proper socket access."""
+        try:
+            # Get docker socket group ID
+            socket_stat = os.stat('/var/run/docker.sock')
+            docker_gid = socket_stat.st_gid
+            
+            # Use sg command to run with correct group permissions
+            wrapped_command = f"sg {docker_gid} -c '{command}'"
+            logger.debug(f"Wrapping docker command with group {docker_gid}: {wrapped_command}")
+            return wrapped_command
+            
+        except Exception as e:
+            logger.warning(f"Failed to wrap docker command, running as-is: {e}")
+            return command
 
     def _send_success_notification(self, job, started_at, finished_at, stats):
         """Send success notification."""
