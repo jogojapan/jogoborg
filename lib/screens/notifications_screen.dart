@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../services/theme_service.dart';
 import '../widgets/app_drawer.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -215,6 +214,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notification Settings'),
@@ -245,6 +247,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: [
                   // SMTP Configuration
                   Card(
+                    color: Colors.blueGrey[800], // Slightly lighter than main background
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -254,11 +257,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             children: [
                               const Icon(Icons.email, color: Colors.blue),
                               const SizedBox(width: 8),
-                              const Text(
+                              Text(
                                 'SMTP Configuration',
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
+                                  color: textColor,
                                 ),
                               ),
                               const Spacer(),
@@ -272,10 +276,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           
                           TextFormField(
                             controller: _smtpHostController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'SMTP Host',
+                              labelStyle: TextStyle(color: Colors.grey[500]),
                               hintText: 'smtp.gmail.com',
-                              border: OutlineInputBorder(),
+                              hintStyle: TextStyle(color: Colors.grey[600]),
+                              border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -286,11 +293,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 flex: 2,
                                 child: TextFormField(
                                   controller: _smtpPortController,
-                                  decoration: const InputDecoration(
+                                  style: TextStyle(color: textColor),
+                                  decoration: InputDecoration(
                                     labelText: 'Port',
+                                    labelStyle: TextStyle(color: Colors.grey[500]),
                                     hintText: '587 (STARTTLS) / 465 (SSL)',
-                                    border: OutlineInputBorder(),
+                                    hintStyle: TextStyle(color: Colors.grey[600]),
                                     helperText: '587=STARTTLS, 465=SSL, 25=None',
+                                    helperStyle: TextStyle(color: Colors.grey[500]),
+                                    border: const OutlineInputBorder(),
                                   ),
                                   keyboardType: TextInputType.number,
                                 ),
@@ -300,9 +311,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 flex: 3,
                                 child: DropdownButtonFormField<String>(
                                   value: _smtpSecurity,
-                                  decoration: const InputDecoration(
+                                  style: TextStyle(color: textColor),
+                                  decoration: InputDecoration(
                                     labelText: 'Security',
-                                    border: OutlineInputBorder(),
+                                    labelStyle: TextStyle(color: Colors.grey[500]),
+                                    border: const OutlineInputBorder(),
                                   ),
                                   items: const [
                                     DropdownMenuItem(value: 'STARTTLS', child: Text('STARTTLS')),
@@ -332,18 +345,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           
                           TextFormField(
                             controller: _smtpUsernameController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Username',
-                              border: OutlineInputBorder(),
+                              labelStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
                           
                           TextFormField(
                             controller: _smtpPasswordController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Password',
-                              border: OutlineInputBorder(),
+                              labelStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                             obscureText: true,
                           ),
@@ -351,10 +368,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           
                           TextFormField(
                             controller: _smtpSenderEmailController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Sender Email Address',
+                              labelStyle: TextStyle(color: Colors.grey[500]),
                               hintText: 'backups@example.com',
-                              border: OutlineInputBorder(),
+                              hintStyle: TextStyle(color: Colors.grey[600]),
+                              border: const OutlineInputBorder(),
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
@@ -370,11 +390,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           
                           TextFormField(
                             controller: _smtpRecipientEmailController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Recipient Email Address (optional)',
+                              labelStyle: TextStyle(color: Colors.grey[500]),
                               hintText: 'admin@example.com',
-                              border: OutlineInputBorder(),
+                              hintStyle: TextStyle(color: Colors.grey[600]),
                               helperText: 'Leave empty to send to sender address',
+                              helperStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                             validator: (value) {
                               if (value != null && value.isNotEmpty) {
@@ -394,6 +418,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   
                   // Webhook Configuration
                   Card(
+                    color: Colors.blueGrey[800], // Slightly lighter than main background
                     child: Padding(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -403,11 +428,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             children: [
                               const Icon(Icons.webhook, color: Colors.green),
                               const SizedBox(width: 8),
-                              const Text(
+                              Text(
                                 'Webhook Configuration (Gotify)',
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
+                                  color: textColor,
                                 ),
                               ),
                               const Spacer(),
@@ -421,20 +447,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           
                           TextFormField(
                             controller: _webhookUrlController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Gotify Server URL',
+                              labelStyle: TextStyle(color: Colors.grey[500]),
                               hintText: 'https://notify.chobycat.com',
-                              border: OutlineInputBorder(),
+                              hintStyle: TextStyle(color: Colors.grey[600]),
                               helperText: 'Base URL only - /message will be added automatically',
+                              helperStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
                           
                           TextFormField(
                             controller: _webhookTokenController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'App Token',
-                              border: OutlineInputBorder(),
+                              labelStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -444,9 +476,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               Expanded(
                                 child: DropdownButtonFormField<String>(
                                   value: _successPriority,
-                                  decoration: const InputDecoration(
+                                  style: TextStyle(color: textColor),
+                                  decoration: InputDecoration(
                                     labelText: 'Success Priority',
-                                    border: OutlineInputBorder(),
+                                    labelStyle: TextStyle(color: Colors.grey[500]),
+                                    border: const OutlineInputBorder(),
                                   ),
                                   items: const [
                                     DropdownMenuItem(value: 'low', child: Text('Low')),
@@ -462,9 +496,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               Expanded(
                                 child: DropdownButtonFormField<String>(
                                   value: _errorPriority,
-                                  decoration: const InputDecoration(
+                                  style: TextStyle(color: textColor),
+                                  decoration: InputDecoration(
                                     labelText: 'Error Priority',
-                                    border: OutlineInputBorder(),
+                                    labelStyle: TextStyle(color: Colors.grey[500]),
+                                    border: const OutlineInputBorder(),
                                   ),
                                   items: const [
                                     DropdownMenuItem(value: 'low', child: Text('Low')),

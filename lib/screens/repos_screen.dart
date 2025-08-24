@@ -263,9 +263,11 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
               const SizedBox(height: 8),
               TextField(
                 controller: _encryptionKeyController,
+                style: TextStyle(color: textColor),
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'Repository Key - ${widget.repository['path']}',
+                  labelStyle: TextStyle(color: Colors.grey[500]),
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.lock_open),

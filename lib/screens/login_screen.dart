@@ -57,12 +57,16 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return Scaffold(
       body: Center(
         child: Container(
           width: 400,
           padding: const EdgeInsets.all(32),
           child: Card(
+            color: backgroundColor,
             elevation: 8,
             child: Padding(
               padding: const EdgeInsets.all(32),
@@ -80,17 +84,19 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
+                    Text(
                       'Borg Backup Manager',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                      style: TextStyle(fontSize: 16, color: Colors.grey[400]),
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
                       controller: _usernameController,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
                         labelText: 'Username',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person),
+                        labelStyle: TextStyle(color: Colors.grey[500]),
+                        border: const OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.person, color: Colors.grey[500]),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -102,11 +108,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
+                      style: TextStyle(color: textColor),
                       obscureText: true,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         labelText: 'Password',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock),
+                        labelStyle: TextStyle(color: Colors.grey[500]),
+                        border: const OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.lock, color: Colors.grey[500]),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {

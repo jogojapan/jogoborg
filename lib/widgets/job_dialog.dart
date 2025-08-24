@@ -247,9 +247,11 @@ class _JobDialogState extends State<JobDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _nameController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Job Name',
-                              border: OutlineInputBorder(),
+                              labelStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
@@ -263,10 +265,13 @@ class _JobDialogState extends State<JobDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _scheduleController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Schedule (cron)',
+                              labelStyle: TextStyle(color: Colors.grey[500]),
                               hintText: '0 2 * * *',
-                              border: OutlineInputBorder(),
+                              hintStyle: TextStyle(color: Colors.grey[600]),
+                              border: const OutlineInputBorder(),
                             ),
                             validator: (value) {
                               if (value == null || value.isEmpty) {
@@ -283,11 +288,15 @@ class _JobDialogState extends State<JobDialog> {
                     // Repository passphrase
                     TextFormField(
                       controller: _repositoryPassphraseController,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
                         labelText: 'Repository Passphrase',
+                        labelStyle: TextStyle(color: Colors.grey[500]),
                         hintText: 'Enter a strong passphrase for Borg encryption',
-                        border: OutlineInputBorder(),
+                        hintStyle: TextStyle(color: Colors.grey[600]),
                         helperText: 'This passphrase encrypts your backups. Keep it safe!',
+                        helperStyle: TextStyle(color: Colors.grey[500]),
+                        border: const OutlineInputBorder(),
                       ),
                       obscureText: true,
                       autocorrect: false,
@@ -343,20 +352,26 @@ class _JobDialogState extends State<JobDialog> {
                     // Compression and exclusions
                     TextFormField(
                       controller: _compressionController,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
                         labelText: 'Compression',
+                        labelStyle: TextStyle(color: Colors.grey[500]),
                         hintText: 'lz4',
-                        border: OutlineInputBorder(),
+                        hintStyle: TextStyle(color: Colors.grey[600]),
+                        border: const OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 16),
                     
                     TextFormField(
                       controller: _excludePatternsController,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: textColor),
+                      decoration: InputDecoration(
                         labelText: 'Exclude Patterns (one per line)',
+                        labelStyle: TextStyle(color: Colors.grey[500]),
                         hintText: '*.log\n*.tmp',
-                        border: OutlineInputBorder(),
+                        hintStyle: TextStyle(color: Colors.grey[600]),
+                        border: const OutlineInputBorder(),
                       ),
                       maxLines: 3,
                     ),
@@ -368,9 +383,11 @@ class _JobDialogState extends State<JobDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _keepDailyController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Keep Daily',
-                              border: OutlineInputBorder(),
+                              labelStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                             keyboardType: TextInputType.number,
                           ),
@@ -379,9 +396,11 @@ class _JobDialogState extends State<JobDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _keepMonthlyController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Keep Monthly',
-                              border: OutlineInputBorder(),
+                              labelStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                             keyboardType: TextInputType.number,
                           ),
@@ -390,9 +409,11 @@ class _JobDialogState extends State<JobDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _keepYearlyController,
-                            decoration: const InputDecoration(
+                            style: TextStyle(color: textColor),
+                            decoration: InputDecoration(
                               labelText: 'Keep Yearly',
-                              border: OutlineInputBorder(),
+                              labelStyle: TextStyle(color: Colors.grey[500]),
+                              border: const OutlineInputBorder(),
                             ),
                             keyboardType: TextInputType.number,
                           ),
@@ -614,9 +635,11 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
           children: [
             DropdownButtonFormField<String>(
               value: _provider,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Provider',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
               items: const [
                 DropdownMenuItem(value: 'aws', child: Text('Amazon S3')),
@@ -629,19 +652,24 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
             if (_provider == 'minio')
               TextFormField(
                 controller: _endpointController,
-                decoration: const InputDecoration(
+                style: TextStyle(color: textColor),
+                decoration: InputDecoration(
                   labelText: 'Endpoint',
+                  labelStyle: TextStyle(color: Colors.grey[500]),
                   hintText: 'https://minio.example.com',
-                  border: OutlineInputBorder(),
+                  hintStyle: TextStyle(color: Colors.grey[600]),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             if (_provider == 'minio') const SizedBox(height: 16),
             
             TextFormField(
               controller: _bucketController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Bucket Name',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 16),
@@ -649,28 +677,35 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
             if (_provider == 'aws')
               TextFormField(
                 controller: _regionController,
-                decoration: const InputDecoration(
+                style: TextStyle(color: textColor),
+                decoration: InputDecoration(
                   labelText: 'AWS Region',
+                  labelStyle: TextStyle(color: Colors.grey[500]),
                   hintText: 'e.g., us-east-1, eu-north-1',
-                  border: OutlineInputBorder(),
+                  hintStyle: TextStyle(color: Colors.grey[600]),
+                  border: const OutlineInputBorder(),
                 ),
               ),
             if (_provider == 'aws') const SizedBox(height: 16),
             
             TextFormField(
               controller: _accessKeyController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Access Key',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 16),
             
             TextFormField(
               controller: _secretKeyController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Secret Key',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
               obscureText: true,
             ),
@@ -679,9 +714,11 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
             if (_provider == 'aws')
               DropdownButtonFormField<String>(
                 value: _storageClass,
-                decoration: const InputDecoration(
+                style: TextStyle(color: textColor),
+                decoration: InputDecoration(
                   labelText: 'Storage Class',
-                  border: OutlineInputBorder(),
+                  labelStyle: TextStyle(color: Colors.grey[500]),
+                  border: const OutlineInputBorder(),
                 ),
                 items: const [
                   DropdownMenuItem(value: 'STANDARD', child: Text('Standard')),
@@ -774,11 +811,15 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
             
             TextFormField(
               controller: _preCommandController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Pre-Command (runs before backup)',
+                labelStyle: TextStyle(color: Colors.grey[500]),
                 hintText: 'docker stop myservice',
-                border: OutlineInputBorder(),
+                hintStyle: TextStyle(color: Colors.grey[600]),
                 helperText: 'Command to run before the backup starts (e.g., suspend services)',
+                helperStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
@@ -786,11 +827,15 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
             
             TextFormField(
               controller: _postCommandController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Post-Command (runs after backup)',
+                labelStyle: TextStyle(color: Colors.grey[500]),
                 hintText: 'docker start myservice',
-                border: OutlineInputBorder(),
+                hintStyle: TextStyle(color: Colors.grey[600]),
                 helperText: 'Command to run after backup completes (success or failure)',
+                helperStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
@@ -903,9 +948,11 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
           children: [
             DropdownButtonFormField<String>(
               value: _dbType,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Database Type',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
               items: const [
                 DropdownMenuItem(value: 'postgresql', child: Text('PostgreSQL')),
@@ -926,9 +973,11 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
                   flex: 3,
                   child: TextFormField(
                     controller: _hostController,
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
                       labelText: 'Host',
-                      border: OutlineInputBorder(),
+                      labelStyle: TextStyle(color: Colors.grey[500]),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -937,9 +986,11 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
                   flex: 1,
                   child: TextFormField(
                     controller: _portController,
-                    decoration: const InputDecoration(
+                    style: TextStyle(color: textColor),
+                    decoration: InputDecoration(
                       labelText: 'Port',
-                      border: OutlineInputBorder(),
+                      labelStyle: TextStyle(color: Colors.grey[500]),
+                      border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.number,
                   ),
@@ -950,18 +1001,22 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
             
             TextFormField(
               controller: _usernameController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Username',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 16),
             
             TextFormField(
               controller: _passwordController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Password',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
               obscureText: true,
             ),
@@ -969,19 +1024,24 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
             
             TextFormField(
               controller: _databaseController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Database Name',
-                border: OutlineInputBorder(),
+                labelStyle: TextStyle(color: Colors.grey[500]),
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 16),
             
             TextFormField(
               controller: _tablesController,
-              decoration: const InputDecoration(
+              style: TextStyle(color: textColor),
+              decoration: InputDecoration(
                 labelText: 'Tables (one per line)',
+                labelStyle: TextStyle(color: Colors.grey[500]),
                 hintText: 'users\norders\nproducts',
-                border: OutlineInputBorder(),
+                hintStyle: TextStyle(color: Colors.grey[600]),
+                border: const OutlineInputBorder(),
               ),
               maxLines: 3,
             ),
