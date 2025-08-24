@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
-import '../services/theme_service.dart';
 import '../widgets/app_drawer.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -14,20 +13,6 @@ class DashboardScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Jogoborg Dashboard'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.palette),
-            onPressed: () {
-              try {
-                print('Dashboard theme toggle tapped');
-                final themeService = context.read<ThemeService>();
-                print('Dashboard current theme: ${themeService.themeMode}');
-                themeService.toggleTheme();
-                print('Dashboard new theme: ${themeService.themeMode}');
-              } catch (e) {
-                print('Dashboard theme toggle error: $e');
-              }
-            },
-          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -99,7 +84,11 @@ class _DashboardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return Card(
+      color: backgroundColor,
       elevation: 4,
       child: InkWell(
         onTap: onTap,
@@ -113,18 +102,19 @@ class _DashboardCard extends StatelessWidget {
               const SizedBox(height: 16),
               Text(
                 title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
+                  color: textColor,
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               Text(
                 subtitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey,
+                  color: Colors.grey[400],
                 ),
                 textAlign: TextAlign.center,
               ),

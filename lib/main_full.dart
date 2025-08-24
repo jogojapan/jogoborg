@@ -35,6 +35,14 @@ class JogoborgApp extends StatelessWidget {
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,
               ),
+              scaffoldBackgroundColor: Colors.grey[900], // Dark background
+              textTheme: ThemeData.dark().textTheme.apply(
+                bodyColor: Colors.white, // Light text color
+                displayColor: Colors.white, // Light display color
+              ),
+              iconTheme: const IconThemeData(
+                color: Colors.white, // Light icon color
+              ),
             ),
             routerConfig: _createRouter(authService),
           );

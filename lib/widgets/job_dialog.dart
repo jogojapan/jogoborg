@@ -218,7 +218,11 @@ class _JobDialogState extends State<JobDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return Dialog(
+      backgroundColor: backgroundColor,
       child: Container(
         width: 800,
         height: 700,
@@ -230,7 +234,7 @@ class _JobDialogState extends State<JobDialog> {
             children: [
               Text(
                 isEditing ? 'Edit Backup Job' : 'New Backup Job',
-                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor),
               ),
               const SizedBox(height: 24),
               
@@ -398,9 +402,9 @@ class _JobDialogState extends State<JobDialog> {
                     const SizedBox(height: 16),
                     
                     // Source directories
-                    const Text(
+                    Text(
                       'Source Directories',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
                     ),
                     const SizedBox(height: 8),
                     
@@ -412,11 +416,12 @@ class _JobDialogState extends State<JobDialog> {
                     const SizedBox(height: 8),
                     
                     ...sourceDirs.map((dir) => Card(
+                      color: Colors.blueGrey[800], // Slightly lighter than main background
                       child: ListTile(
-                        leading: const Icon(Icons.folder),
-                        title: Text(dir),
+                        leading: Icon(Icons.folder, color: Colors.blue[300]),
+                        title: Text(dir, style: TextStyle(color: textColor)),
                         trailing: IconButton(
-                          icon: const Icon(Icons.remove),
+                          icon: Icon(Icons.remove, color: Colors.red[300]),
                           onPressed: () => _removeSourceDirectory(dir),
                         ),
                       ),
@@ -493,8 +498,12 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return AlertDialog(
-      title: const Text('Select Source Directory'),
+      backgroundColor: backgroundColor,
+      title: Text('Select Source Directory', style: TextStyle(color: textColor)),
       content: SizedBox(
         width: 500,
         height: 400,
@@ -506,7 +515,7 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
                 Expanded(
                   child: Text(
                     currentPath,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
                   ),
                 ),
                 ElevatedButton(
@@ -530,8 +539,8 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
                         if (!isDirectory) return const SizedBox.shrink();
                         
                         return ListTile(
-                          leading: const Icon(Icons.folder, color: Colors.blue),
-                          title: Text(item['name'] ?? 'Unknown'),
+                          leading: Icon(Icons.folder, color: Colors.blue[300]),
+                          title: Text(item['name'] ?? 'Unknown', style: TextStyle(color: textColor)),
                           onTap: () {
                             setState(() {
                               currentPath = item['path'];
@@ -592,8 +601,12 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return AlertDialog(
-      title: const Text('S3 Configuration'),
+      backgroundColor: backgroundColor,
+      title: Text('S3 Configuration', style: TextStyle(color: textColor)),
       content: SizedBox(
         width: 400,
         child: Column(
@@ -741,17 +754,21 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return AlertDialog(
-      title: const Text('Configure Commands'),
+      backgroundColor: backgroundColor,
+      title: Text('Configure Commands', style: TextStyle(color: textColor)),
       content: SizedBox(
         width: 500,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'Configure commands to run before and after backup execution. Use these to suspend/resume services during backups.',
-              style: TextStyle(color: Colors.grey, fontSize: 14),
+              style: TextStyle(color: Colors.grey[400], fontSize: 14),
             ),
             const SizedBox(height: 16),
             
@@ -779,9 +796,9 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
             ),
             const SizedBox(height: 16),
             
-            const Text(
+            Text(
               'Note: Commands will run with a 5-minute timeout. Non-zero exit codes will be logged as warnings but won\'t fail the backup.',
-              style: TextStyle(color: Colors.orange, fontSize: 12),
+              style: TextStyle(color: Colors.orange[300], fontSize: 12),
             ),
           ],
         ),
@@ -873,8 +890,12 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return AlertDialog(
-      title: const Text('Database Configuration'),
+      backgroundColor: backgroundColor,
+      title: Text('Database Configuration', style: TextStyle(color: textColor)),
       content: SizedBox(
         width: 400,
         child: Column(

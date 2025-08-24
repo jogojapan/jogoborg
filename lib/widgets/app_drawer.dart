@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
-import '../services/theme_service.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -10,8 +9,11 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentLocation = GoRouterState.of(context).matchedLocation;
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
 
     return Drawer(
+      backgroundColor: backgroundColor,
       child: Column(
         children: [
           const DrawerHeader(
@@ -81,19 +83,8 @@ class AppDrawer extends StatelessWidget {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.palette),
-            title: const Text('Toggle Theme'),
-            onTap: () {
-              print('Theme toggle tapped');
-              final themeService = context.read<ThemeService>();
-              print('Current theme mode: ${themeService.themeMode}');
-              themeService.toggleTheme();
-              print('New theme mode: ${themeService.themeMode}');
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text('Logout'),
+            leading: Icon(Icons.logout, color: textColor),
+            title: Text('Logout', style: TextStyle(color: textColor)),
             onTap: () async {
               await context.read<AuthService>().logout();
               if (context.mounted) {
@@ -123,15 +114,18 @@ class _DrawerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textColor = Colors.grey[300]; // Light gray text
+    final selectedColor = Colors.blue[300]; // Slightly lighter blue for selected items
+    
     return ListTile(
       leading: Icon(
         icon,
-        color: selected ? Colors.blue : null,
+        color: selected ? selectedColor : textColor,
       ),
       title: Text(
         title,
         style: TextStyle(
-          color: selected ? Colors.blue : null,
+          color: selected ? selectedColor : textColor,
           fontWeight: selected ? FontWeight.bold : null,
         ),
       ),

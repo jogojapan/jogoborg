@@ -1,14 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'dart:html' as html;
 
 class ApiService extends ChangeNotifier {
   String get baseUrl {
     if (kIsWeb) {
-      // Use current browser location for web
-      final uri = Uri.parse(html.window.location.href);
-      return '${uri.scheme}://${uri.host}:${uri.port}/api';
+      // For web, use relative URL which will work from any host
+      return '/api';
     } else {
       // Fallback for non-web platforms
       return 'http://localhost:8080/api';

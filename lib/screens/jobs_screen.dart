@@ -243,7 +243,13 @@ class _JobCard extends StatelessWidget {
         ? (job['source_directories'] as String).split(',')
         : List<String>.from(job['source_directories'] ?? []);
 
+    // Define colors for easy reuse and consistency
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue
+    final textColor = Colors.grey[300]; // Light gray text for good contrast on dark background
+    final mutedTextColor = Colors.grey[400]; // Slightly darker for less important text
+
     return Card(
+      color: backgroundColor, // Set the background color of the card
       margin: const EdgeInsets.only(bottom: 16),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -258,17 +264,18 @@ class _JobCard extends StatelessWidget {
                     children: [
                       Text(
                         job['name'] ?? 'Unnamed Job',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
+                          color: textColor,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         'Schedule: ${job['schedule'] ?? 'Not set'}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
-                          color: Colors.grey,
+                          color: mutedTextColor, // Set muted text color
                         ),
                       ),
                     ],
@@ -289,33 +296,33 @@ class _JobCard extends StatelessWidget {
                     }
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'trigger',
                       child: Row(
                         children: [
                           Icon(Icons.play_arrow, color: Colors.green),
                           SizedBox(width: 8),
-                          Text('Run Now', style: TextStyle(color: Colors.green)),
+                          const Text('Run Now'),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'edit',
                       child: Row(
                         children: [
                           Icon(Icons.edit),
                           SizedBox(width: 8),
-                          Text('Edit'),
+                          Text('Edit', style: TextStyle(color: textColor)),
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'delete',
                       child: Row(
                         children: [
                           Icon(Icons.delete, color: Colors.red),
                           SizedBox(width: 8),
-                          Text('Delete', style: TextStyle(color: Colors.red)),
+                          Text('Delete', style: TextStyle(color: textColor)),
                         ],
                       ),
                     ),
@@ -323,43 +330,39 @@ class _JobCard extends StatelessWidget {
                 ),
               ],
             ),
-            
             const SizedBox(height: 12),
-            
             // Job details
             _JobDetailRow(
               label: 'Compression',
               value: job['compression'] ?? 'lz4',
+              textColor: textColor,
             ),
-            
             _JobDetailRow(
               label: 'Retention',
               value: 'Daily: ${job['keep_daily']}, Monthly: ${job['keep_monthly']}, Yearly: ${job['keep_yearly']}',
+              textColor: textColor,
             ),
-            
             if (sourceDirs.isNotEmpty) ...[
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Source Directories:',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
               ),
               const SizedBox(height: 4),
               ...sourceDirs.map((dir) => Padding(
                 padding: const EdgeInsets.only(left: 16, bottom: 2),
                 child: Row(
                   children: [
-                    const Icon(Icons.folder, size: 16, color: Colors.blue),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(dir)),
+                    Icon(Icons.folder, size: 16, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Expanded(child: Text(dir, style: TextStyle(color: textColor))),
                   ],
                 ),
               )),
             ],
-            
             // Last run logs
             const SizedBox(height: 12),
             _LastRunsSection(jobId: job['id']),
-            
             // Action buttons
             const SizedBox(height: 12),
             Row(
@@ -367,8 +370,8 @@ class _JobCard extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: onTrigger,
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Run Now'),
+                    icon: Icon(Icons.play_arrow),
+                    label: Text('Run Now'),
                     style: ElevatedButton.styleFrom(
                       foregroundColor: Colors.white,
                       backgroundColor: Colors.green,
@@ -379,7 +382,7 @@ class _JobCard extends StatelessWidget {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: onEdit,
-                    child: const Text('Details'),
+                    child: Text('Details'),
                   ),
                 ),
               ],
@@ -394,10 +397,12 @@ class _JobCard extends StatelessWidget {
 class _JobDetailRow extends StatelessWidget {
   final String label;
   final String value;
+  final Color? textColor;
 
   const _JobDetailRow({
     required this.label,
     required this.value,
+    this.textColor,
   });
 
   @override
@@ -411,10 +416,10 @@ class _JobDetailRow extends StatelessWidget {
             width: 100,
             child: Text(
               '$label:',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
             ),
           ),
-          Expanded(child: Text(value)),
+          Expanded(child: Text(value, style: TextStyle(color: textColor))),
         ],
       ),
     );
@@ -473,18 +478,18 @@ class _LastRunsSectionState extends State<_LastRunsSection> {
     }
 
     if (lastRuns.isEmpty) {
-      return const Text(
+      return Text(
         'Last runs: No runs yet',
-        style: TextStyle(color: Colors.grey),
+        style: TextStyle(color: Colors.grey[400]),
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Last 3 runs:',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[300]),
         ),
         const SizedBox(height: 4),
         ...lastRuns.map((run) {

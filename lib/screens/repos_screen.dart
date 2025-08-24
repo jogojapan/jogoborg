@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../services/theme_service.dart';
 import '../widgets/app_drawer.dart';
 
 class ReposScreen extends StatefulWidget {
@@ -76,10 +75,10 @@ class _ReposScreenState extends State<ReposScreen> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : repositories.isEmpty
-              ? const Center(
+              ? Center(
                   child: Text(
                     'No repositories found in /borgspace',
-                    style: TextStyle(fontSize: 16),
+                    style: TextStyle(fontSize: 16, color: Colors.grey[400]),
                   ),
                 )
               : Padding(
@@ -123,7 +122,12 @@ class _RepositoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[800]; // Slightly lighter than main background for contrast
+    final textColor = Colors.grey[300]; // Light gray text
+    final mutedTextColor = Colors.grey[400]; // Muted text for details
+    
     return Card(
+      color: backgroundColor,
       elevation: 4,
       child: InkWell(
         onTap: onTap,
@@ -140,9 +144,10 @@ class _RepositoryCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       repository['name'] ?? 'Unknown',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
+                        color: textColor,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -152,19 +157,19 @@ class _RepositoryCard extends StatelessWidget {
               const SizedBox(height: 12),
               Text(
                 'Path: ${repository['path']}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: mutedTextColor),
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 4),
               Text(
                 'Archives: ${repository['archives_count'] ?? 0}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(fontSize: 12, color: mutedTextColor),
               ),
               if (repository['last_accessed'] != null) ...[
                 const SizedBox(height: 4),
                 Text(
                   'Last accessed: ${repository['last_accessed']}',
-                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  style: TextStyle(fontSize: 10, color: mutedTextColor),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -235,21 +240,25 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
+    final textColor = Colors.grey[300]; // Light gray text
+    
     return AlertDialog(
-      title: Text('Repository: ${widget.repository['name']}'),
+      backgroundColor: backgroundColor,
+      title: Text('Repository: ${widget.repository['name']}', style: TextStyle(color: textColor)),
       content: SizedBox(
         width: 600,
         height: 500,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Path: ${widget.repository['path']}'),
+            Text('Path: ${widget.repository['path']}', style: TextStyle(color: textColor)),
             const SizedBox(height: 16),
             
             if (!isUnlocked) ...[
               Text(
                 'Encryption Key for ${widget.repository['path']}:',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -270,31 +279,32 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
               if (isLoadingArchives)
                 const Center(child: CircularProgressIndicator()),
             ] else ...[
-              const Text(
+              Text(
                 'Archives (newest first):',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
               ),
               const SizedBox(height: 8),
               
               Expanded(
                 child: archives.isEmpty
-                    ? const Center(child: Text('No archives found'))
+                    ? Center(child: Text('No archives found', style: TextStyle(color: textColor)))
                     : ListView.builder(
                         itemCount: archives.length,
                         itemBuilder: (context, index) {
                           final archive = archives[index];
                           return Card(
+                            color: Colors.blueGrey[800], // Slightly lighter than dialog background
                             child: ListTile(
-                              leading: const Icon(Icons.archive),
-                              title: Text(archive['name'] ?? 'Unknown'),
+                              leading: Icon(Icons.archive, color: Colors.blue[300]),
+                              title: Text(archive['name'] ?? 'Unknown', style: TextStyle(color: textColor)),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Created: ${archive['created_at'] ?? 'Unknown'}'),
+                                  Text('Created: ${archive['created_at'] ?? 'Unknown'}', style: TextStyle(color: Colors.grey[400])),
                                   if (archive['size'] != null)
-                                    Text('Size: ${_formatBytes(archive['size'])}'),
+                                    Text('Size: ${_formatBytes(archive['size'])}', style: TextStyle(color: Colors.grey[400])),
                                   if (archive['files_count'] != null)
-                                    Text('Files: ${archive['files_count']}'),
+                                    Text('Files: ${archive['files_count']}', style: TextStyle(color: Colors.grey[400])),
                                 ],
                               ),
                               isThreeLine: true,
