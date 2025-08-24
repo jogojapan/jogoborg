@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/color_config.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -57,8 +58,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
-    final textColor = Colors.grey[300]; // Light gray text
+    final backgroundColor = AppColors.cardBackground;
+    final textColor = AppColors.primaryText;
     
     return Scaffold(
       body: Center(
@@ -86,17 +87,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 8),
                     Text(
                       'Borg Backup Manager',
-                      style: TextStyle(fontSize: 16, color: Colors.grey[400]),
+                      style: TextStyle(fontSize: 16, color: AppColors.secondaryText),
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
                       controller: _usernameController,
-                      style: TextStyle(color: textColor),
+                      style: TextStyle(color: AppColors.inputText),
                       decoration: InputDecoration(
                         labelText: 'Username',
-                        labelStyle: TextStyle(color: Colors.grey[500]),
+                        labelStyle: TextStyle(color: AppColors.inputLabel),
                         border: const OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person, color: Colors.grey[500]),
+                        prefixIcon: Icon(Icons.person, color: AppColors.inputIcon),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -108,13 +109,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _passwordController,
-                      style: TextStyle(color: textColor),
+                      style: TextStyle(color: AppColors.inputText),
                       obscureText: true,
                       decoration: InputDecoration(
                         labelText: 'Password',
-                        labelStyle: TextStyle(color: Colors.grey[500]),
+                        labelStyle: TextStyle(color: AppColors.inputLabel),
                         border: const OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock, color: Colors.grey[500]),
+                        prefixIcon: Icon(Icons.lock, color: AppColors.inputIcon),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {

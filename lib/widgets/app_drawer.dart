@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/color_config.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -9,8 +10,8 @@ class AppDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentLocation = GoRouterState.of(context).matchedLocation;
-    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
-    final textColor = Colors.grey[300]; // Light gray text
+    final backgroundColor = AppColors.drawerBackground;
+    final textColor = AppColors.primaryText;
 
     return Drawer(
       backgroundColor: backgroundColor,
@@ -114,8 +115,8 @@ class _DrawerItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Colors.grey[300]; // Light gray text
-    final selectedColor = Colors.blue[300]; // Slightly lighter blue for selected items
+    final textColor = AppColors.primaryText;
+    final selectedColor = AppColors.selectedBlue;
     
     return ListTile(
       leading: Icon(

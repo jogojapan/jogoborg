@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../services/theme_service.dart';
+import '../services/color_config.dart';
 import '../widgets/app_drawer.dart';
 import '../widgets/job_dialog.dart';
 
@@ -243,10 +243,10 @@ class _JobCard extends StatelessWidget {
         ? (job['source_directories'] as String).split(',')
         : List<String>.from(job['source_directories'] ?? []);
 
-    // Define colors for easy reuse and consistency
-    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue
-    final textColor = Colors.grey[300]; // Light gray text for good contrast on dark background
-    final mutedTextColor = Colors.grey[400]; // Slightly darker for less important text
+    // Use centralized color configuration
+    final backgroundColor = AppColors.cardBackground;
+    final textColor = AppColors.primaryText;
+    final mutedTextColor = AppColors.secondaryText;
 
     return Card(
       color: backgroundColor, // Set the background color of the card
@@ -480,7 +480,7 @@ class _LastRunsSectionState extends State<_LastRunsSection> {
     if (lastRuns.isEmpty) {
       return Text(
         'Last runs: No runs yet',
-        style: TextStyle(color: Colors.grey[400]),
+        style: TextStyle(color: AppColors.secondaryText),
       );
     }
 
@@ -489,7 +489,7 @@ class _LastRunsSectionState extends State<_LastRunsSection> {
       children: [
         Text(
           'Last 3 runs:',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[300]),
+          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryText),
         ),
         const SizedBox(height: 4),
         ...lastRuns.map((run) {

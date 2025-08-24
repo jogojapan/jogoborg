@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import '../services/color_config.dart';
 import '../widgets/app_drawer.dart';
 
 class ReposScreen extends StatefulWidget {
@@ -78,7 +79,7 @@ class _ReposScreenState extends State<ReposScreen> {
               ? Center(
                   child: Text(
                     'No repositories found in /borgspace',
-                    style: TextStyle(fontSize: 16, color: Colors.grey[400]),
+                    style: TextStyle(fontSize: 16, color: AppColors.secondaryText),
                   ),
                 )
               : Padding(
@@ -122,9 +123,9 @@ class _RepositoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = Colors.blueGrey[800]; // Slightly lighter than main background for contrast
-    final textColor = Colors.grey[300]; // Light gray text
-    final mutedTextColor = Colors.grey[400]; // Muted text for details
+    final backgroundColor = AppColors.cardBackground;
+    final textColor = AppColors.primaryText;
+    final mutedTextColor = AppColors.secondaryText;
     
     return Card(
       color: backgroundColor,
@@ -240,8 +241,8 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
-    final textColor = Colors.grey[300]; // Light gray text
+    final backgroundColor = AppColors.dialogBackground;
+    final textColor = AppColors.primaryText;
     
     return AlertDialog(
       backgroundColor: backgroundColor,
@@ -263,11 +264,11 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
               const SizedBox(height: 8),
               TextField(
                 controller: _encryptionKeyController,
-                style: TextStyle(color: textColor),
+                style: TextStyle(color: AppColors.inputText),
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'Repository Key - ${widget.repository['path']}',
-                  labelStyle: TextStyle(color: Colors.grey[500]),
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
                   border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.lock_open),
@@ -295,18 +296,18 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
                         itemBuilder: (context, index) {
                           final archive = archives[index];
                           return Card(
-                            color: Colors.blueGrey[800], // Slightly lighter than dialog background
+                            color: AppColors.cardBackground,
                             child: ListTile(
-                              leading: Icon(Icons.archive, color: Colors.blue[300]),
+                              leading: Icon(Icons.archive, color: AppColors.selectedBlue),
                               title: Text(archive['name'] ?? 'Unknown', style: TextStyle(color: textColor)),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Created: ${archive['created_at'] ?? 'Unknown'}', style: TextStyle(color: Colors.grey[400])),
+                                  Text('Created: ${archive['created_at'] ?? 'Unknown'}', style: TextStyle(color: AppColors.secondaryText)),
                                   if (archive['size'] != null)
-                                    Text('Size: ${_formatBytes(archive['size'])}', style: TextStyle(color: Colors.grey[400])),
+                                    Text('Size: ${_formatBytes(archive['size'])}', style: TextStyle(color: AppColors.secondaryText)),
                                   if (archive['files_count'] != null)
-                                    Text('Files: ${archive['files_count']}', style: TextStyle(color: Colors.grey[400])),
+                                    Text('Files: ${archive['files_count']}', style: TextStyle(color: AppColors.secondaryText)),
                                 ],
                               ),
                               isThreeLine: true,

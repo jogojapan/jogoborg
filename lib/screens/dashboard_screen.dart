@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../services/color_config.dart';
 import '../widgets/app_drawer.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -84,8 +85,8 @@ class _DashboardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = Colors.blueGrey[900]; // Dark gray/blue background
-    final textColor = Colors.grey[300]; // Light gray text
+    final backgroundColor = AppColors.cardBackground;
+    final textColor = AppColors.primaryText;
     
     return Card(
       color: backgroundColor,
@@ -114,7 +115,7 @@ class _DashboardCard extends StatelessWidget {
                 subtitle,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[400],
+                  color: AppColors.secondaryText,
                 ),
                 textAlign: TextAlign.center,
               ),
