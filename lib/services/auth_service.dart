@@ -1,61 +1,76 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:crypto/crypto.dart';
 
 class AuthService extends ChangeNotifier {
-  static const _storage = FlutterSecureStorage();
   static const _tokenKey = 'auth_token';
-  
-  bool _isAuthenticated = false;
+  static const _baseUrl = 'http://localhost:8080'; // Change to your server URL
+
   String? _token;
+  bool _isAuthenticated = false;
 
   bool get isAuthenticated => _isAuthenticated;
   String? get token => _token;
 
-  AuthService() {
-    _loadToken();
-  }
-
-  Future<void> _loadToken() async {
-    try {
-      _token = await _storage.read(key: _tokenKey);
-      _isAuthenticated = _token != null;
-      notifyListeners();
-    } catch (e) {
-      _isAuthenticated = false;
-      notifyListeners();
-    }
-  }
-
+  // Method to login
   Future<bool> login(String username, String password) async {
     try {
-      // Hash the credentials for basic security
-      final credentials = '$username:$password';
-      final bytes = utf8.encode(credentials);
-      final digest = sha256.convert(bytes);
-      final token = digest.toString();
+      final url = Uri.parse('$_baseUrl/api/login');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'username': username,
+          'password': password,
+        }),
+      );
 
-      // In a real implementation, this would validate against environment variables
-      // For now, we'll store the token and assume validation happens server-side
-      await _storage.write(key: _tokenKey, value: token);
-      _token = token;
-      _isAuthenticated = true;
-      notifyListeners();
-      return true;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _token = data['token'];
+        _isAuthenticated = true;
+        notifyListeners();
+        return true;
+      } else {
+        return false;
+      }
     } catch (e) {
       return false;
     }
   }
 
+  // Method to logout
   Future<void> logout() async {
-    try {
-      await _storage.delete(key: _tokenKey);
-      _token = null;
-      _isAuthenticated = false;
-      notifyListeners();
-    } catch (e) {
-      // Handle error
+    // if (_token != null) {
+    //   try {
+    //     // Optional: Call server to invalidate token
+    //     final url = Uri.parse('$_baseUrl/api/logout');
+    //     await http.post(
+    //       url,
+    //       headers: getAuthHeaders(),
+    //     );
+    //   } catch (e) {
+    //     // Log error but continue with local logout
+    //     debugPrint('Error during server logout: $e');
+    //   }
+    // }
+
+    _token = null;
+    _isAuthenticated = false;
+    notifyListeners();
+  }
+
+  // Method to get authorization header for API requests
+  Map<String, String> getAuthHeaders() {
+    if (_token != null) {
+      return {
+        'Authorization': 'Bearer $_token',
+        'Content-Type': 'application/json',
+      };
     }
+    return {
+      'Content-Type': 'application/json',
+    };
   }
 }

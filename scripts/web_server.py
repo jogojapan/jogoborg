@@ -11,6 +11,7 @@ from urllib.parse import urlparse, parse_qs
 import subprocess
 import threading
 import hashlib
+import secrets
 
 # Add project root to Python path
 sys.path.append('/app')
@@ -20,6 +21,9 @@ from scripts.database_dumper import DatabaseDumper
 from scripts.s3_sync import S3Syncer
 from scripts.backup_executor import BackupExecutor
 from scripts.init_gpg import encrypt_data, decrypt_data
+
+# Load the password from environment variable
+JOGOBORG_WEB_PASSWORD = os.environ.get('JOGOBORG_WEB_PASSWORD', '')
 
 class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -40,7 +44,12 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         try:
             parsed_path = urlparse(self.path)
             path = parsed_path.path
-            
+
+            # Check authentication for protected endpoints
+            if self._is_protected_endpoint(path, "GET") and not self._is_authenticated():
+                self._send_error(401, "Unauthorized")
+                return
+
             if path == '/health':
                 self._handle_health_check()
             elif path == '/api/repositories':
@@ -69,7 +78,24 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             
             parsed_path = urlparse(self.path)
             path = parsed_path.path
-            
+
+            # Handle login specially (no auth required)
+            if path == '/api/login':
+                content_length = int(self.headers.get('Content-Length', 0))
+                post_data = self.rfile.read(content_length).decode('utf-8')
+                try:
+                    data = json.loads(post_data) if post_data else {}
+                except json.JSONDecodeError:
+                    self._send_error(400, "Invalid JSON")
+                    return
+                self._handle_login(data)
+                return
+
+            # Check authentication for all other POST endpoints
+            if self._is_protected_endpoint(path, "POST") and not self._is_authenticated():
+                self._send_error(401, "Unauthorized")
+                return
+
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length).decode('utf-8')
             
@@ -107,7 +133,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def do_PUT(self):
         """Handle PUT requests."""
         try:
-            
+            # Check authentication for all PUT endpoints
+            if not self._is_authenticated():
+                self._send_error(401, "Unauthorized")
+                return
+
             parsed_path = urlparse(self.path)
             path = parsed_path.path
             
@@ -135,7 +165,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         """Handle DELETE requests."""
         try:
-            
+            # Check authentication for all DELETE endpoints
+            if not self._is_authenticated():
+                self._send_error(401, "Unauthorized")
+                return
+
             path = urlparse(self.path).path
             
             if path.startswith('/api/jobs/'):
@@ -147,6 +181,50 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logging.error(f"DELETE request error: {e}")
             self._send_error(500, "Internal server error")
+
+    def _is_protected_endpoint(self, path, method):
+        """Determine if an endpoint requires authentication."""
+        # Login endpoint doesn't require auth
+        if path == '/api/login':
+            return False
+
+        # All API endpoints except login require auth
+        if path.startswith('/api/'):
+            return True
+
+        # All non-API endpoints (static files) don't require auth
+        return False
+
+    def _is_authenticated(self):
+        """Check if the request has a valid authentication token."""
+        auth_header = self.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return False
+
+        token = auth_header[7:]  # Remove "Bearer " prefix
+
+        # For now, we'll regenerate the expected token each time. We
+        # will store this in a database in the future.
+        expected_token = hashlib.sha256(f"admin:{JOGOBORG_WEB_PASSWORD}".encode()).hexdigest()
+
+        return secrets.compare_digest(token, expected_token)
+
+    def _handle_login(self, data):
+        """Handle login requests."""
+        username = data.get('username')
+        password = data.get('password')
+
+        # Hardcoded "admin" user is the only possible user
+        if username == 'admin' and password == JOGOBORG_WEB_PASSWORD:
+            # Generate a token (in the future, we will use a proper JWT or session system)
+            token = hashlib.sha256(f"{username}:{password}".encode()).hexdigest()
+
+            self._send_json_response({
+                'token': token,
+                'message': 'Login successful'
+            })
+        else:
+            self._send_error(401, "Invalid credentials")
 
     def _set_cors_headers(self):
         """Set CORS headers for web requests."""
@@ -851,7 +929,13 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 def run_server():
     """Run the HTTP server."""
     port = int(os.environ.get('JOGOBORG_WEB_PORT', os.environ.get('WEB_PORT', 8080)))
-    
+
+    # Check if password is set
+    if not JOGOBORG_WEB_PASSWORD:
+        logging.warning("JOGOBORG_WEB_PASSWORD environment variable not set. Authentication will not work.")
+    else:
+        logging.info(f"JOGOBORG_WEB_PASSWORD {JOGOBORG_WEB_PASSWORD}")
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
