@@ -25,6 +25,24 @@ from scripts.init_gpg import encrypt_data, decrypt_data
 # Load the password from environment variable
 JOGOBORG_WEB_PASSWORD = os.environ.get('JOGOBORG_WEB_PASSWORD', '')
 
+
+from logging.handlers import RotatingFileHandler
+log_dir = "/log"
+os.makedirs(log_dir, exist_ok=True)
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+handler = RotatingFileHandler(
+    "/log/web_server.log",
+    maxBytes    = 5 * 1024 * 1024,  # 5 MB
+    backupCount = 3  # Keep up to 3 old log files
+)
+formatter = logging.Formatter(
+    '%(asctime)s %(levelname)s %(message)s'
+)
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
 class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         self.db_path = '/config/jogoborg.db'
@@ -69,7 +87,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(404, "Not found")
                 
         except Exception as e:
-            logging.error(f"GET request error: {e}")
+            logger.error(f"GET request error: {e}")
             self._send_error(500, "Internal server error")
 
     def do_POST(self):
@@ -86,6 +104,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     data = json.loads(post_data) if post_data else {}
                 except json.JSONDecodeError:
+                    logger.error(f"Invalid JSON: {post_data}")
                     self._send_error(400, "Invalid JSON")
                     return
                 self._handle_login(data)
@@ -127,7 +146,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(404, "Not found")
                 
         except Exception as e:
-            logging.error(f"POST request error: {e}")
+            logger.error(f"POST request error: {e}")
             self._send_error(500, "Internal server error")
 
     def do_PUT(self):
@@ -159,7 +178,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(404, "Not found")
                 
         except Exception as e:
-            logging.error(f"PUT request error: {e}")
+            logger.error(f"PUT request error: {e}")
             self._send_error(500, "Internal server error")
 
     def do_DELETE(self):
@@ -179,7 +198,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(404, "Not found")
                 
         except Exception as e:
-            logging.error(f"DELETE request error: {e}")
+            logger.error(f"DELETE request error: {e}")
             self._send_error(500, "Internal server error")
 
     def _is_protected_endpoint(self, path, method):
@@ -215,7 +234,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         password = data.get('password')
 
         # Hardcoded "admin" user is the only possible user
+        logger.debug(f"Checking user name '{username}', pw <hidden>.")
         if username == 'admin' and password == JOGOBORG_WEB_PASSWORD:
+            logger.debug("User name and password are correct.")
             # Generate a token (in the future, we will use a proper JWT or session system)
             token = hashlib.sha256(f"{username}:{password}".encode()).hexdigest()
 
@@ -224,6 +245,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 'message': 'Login successful'
             })
         else:
+            logger.debug("User name or password incorrect.")
             self._send_error(401, "Invalid credentials")
 
     def _set_cors_headers(self):
@@ -270,7 +292,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response({'repositories': repositories})
             
         except Exception as e:
-            logging.error(f"Error getting repositories: {e}")
+            logger.error(f"Error getting repositories: {e}")
             self._send_error(500, "Failed to get repositories")
 
     def _count_archives(self, repo_path):
@@ -345,7 +367,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response({'archives': archives})
             
         except Exception as e:
-            logging.error(f"Error unlocking repository: {e}")
+            logger.error(f"Error unlocking repository: {e}")
             self._send_error(500, "Failed to unlock repository")
 
     def _handle_get_jobs(self):
@@ -482,7 +504,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 conn.close()
                 
         except Exception as e:
-            logging.error(f"Error creating job: {e}")
+            logger.error(f"Error creating job: {e}")
             self._send_error(500, "Failed to create job")
 
     def _handle_update_job(self, job_id, data):
@@ -543,7 +565,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 conn.close()
                 
         except Exception as e:
-            logging.error(f"Error updating job: {e}")
+            logger.error(f"Error updating job: {e}")
             self._send_error(500, "Failed to update job")
 
     def _handle_delete_job(self, job_id):
@@ -565,7 +587,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 conn.close()
                 
         except Exception as e:
-            logging.error(f"Error deleting job: {e}")
+            logger.error(f"Error deleting job: {e}")
             self._send_error(500, "Failed to delete job")
 
     def _handle_trigger_job(self, job_id):
@@ -623,9 +645,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 try:
                     executor = BackupExecutor()
                     executor.execute_job(job)
-                    logging.info(f"Manual job trigger completed successfully for job: {job['name']}")
+                    logger.info(f"Manual job trigger completed successfully for job: {job['name']}")
                 except Exception as e:
-                    logging.error(f"Manual job trigger failed for job {job['name']}: {e}")
+                    logger.error(f"Manual job trigger failed for job {job['name']}: {e}")
             
             # Start the job in a separate thread
             job_thread = threading.Thread(target=run_job, daemon=True)
@@ -636,7 +658,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             })
             
         except Exception as e:
-            logging.error(f"Error triggering job: {e}")
+            logger.error(f"Error triggering job: {e}")
             self._send_error(500, "Failed to trigger job")
 
     def _handle_get_job_logs(self, job_id, query_string):
@@ -684,7 +706,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 conn.close()
                 
         except Exception as e:
-            logging.error(f"Error getting job logs: {e}")
+            logger.error(f"Error getting job logs: {e}")
             self._send_error(500, "Failed to get job logs")
 
     def _handle_browse_sources(self, data):
@@ -729,7 +751,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response({'items': items})
             
         except Exception as e:
-            logging.error(f"Error browsing sources: {e}")
+            logger.error(f"Error browsing sources: {e}")
             self._send_error(500, "Failed to browse directory")
 
     def _handle_calculate_size(self, data):
@@ -767,7 +789,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response({'size': size})
             
         except Exception as e:
-            logging.error(f"Error calculating size: {e}")
+            logger.error(f"Error calculating size: {e}")
             self._send_error(500, "Failed to calculate size")
 
     def _handle_get_notifications(self):
@@ -777,7 +799,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response({'settings': settings})
             
         except Exception as e:
-            logging.error(f"Error getting notifications: {e}")
+            logger.error(f"Error getting notifications: {e}")
             self._send_error(500, "Failed to get notification settings")
 
     def _handle_get_notifications_for_edit(self):
@@ -787,7 +809,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response({'settings': settings})
             
         except Exception as e:
-            logging.error(f"Error getting notifications for edit: {e}")
+            logger.error(f"Error getting notifications for edit: {e}")
             self._send_error(500, "Failed to get notification settings for editing")
 
     def _handle_update_notifications(self, data):
@@ -803,7 +825,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self._send_json_response({'message': 'Notification settings updated successfully'})
             
         except Exception as e:
-            logging.error(f"Error updating notifications: {e}")
+            logger.error(f"Error updating notifications: {e}")
             self._send_error(500, "Failed to update notification settings")
 
     def _handle_test_smtp(self, data):
@@ -817,7 +839,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(400, message)
                 
         except Exception as e:
-            logging.error(f"Error testing SMTP: {e}")
+            logger.error(f"Error testing SMTP: {e}")
             self._send_error(500, "SMTP test failed")
 
     def _handle_test_webhook(self, data):
@@ -831,7 +853,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(400, message)
                 
         except Exception as e:
-            logging.error(f"Error testing webhook: {e}")
+            logger.error(f"Error testing webhook: {e}")
             self._send_error(500, "Webhook test failed")
 
     def _handle_test_database(self, data):
@@ -845,7 +867,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(400, message)
                 
         except Exception as e:
-            logging.error(f"Error testing database: {e}")
+            logger.error(f"Error testing database: {e}")
             self._send_error(500, "Database test failed")
 
     def _serve_static_file(self, path):
@@ -880,7 +902,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             
         except Exception as e:
-            logging.error(f"Error serving static file {file_path}: {e}")
+            logger.error(f"Error serving static file {file_path}: {e}")
             self._send_error(404, "File not found")
 
     def _get_content_type(self, file_path):
@@ -932,27 +954,15 @@ def run_server():
 
     # Check if password is set
     if not JOGOBORG_WEB_PASSWORD:
-        logging.warning("JOGOBORG_WEB_PASSWORD environment variable not set. Authentication will not work.")
-    else:
-        logging.info(f"JOGOBORG_WEB_PASSWORD {JOGOBORG_WEB_PASSWORD}")
+        logger.warning("JOGOBORG_WEB_PASSWORD environment variable not set. Authentication will not work.")
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('/log/web_server.log'),
-            logging.StreamHandler()
-        ]
-    )
-    
     server = HTTPServer(('0.0.0.0', port), JogoborgHTTPHandler)
-    
-    logging.info(f"Starting Jogoborg web server on port {port}")
+    logger.info(f"Starting Jogoborg web server on port {port}")
     
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        logging.info("Shutting down web server")
+        logger.info("Shutting down web server")
         server.shutdown()
 
 if __name__ == '__main__':

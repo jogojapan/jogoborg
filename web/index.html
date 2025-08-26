@@ -14,8 +14,11 @@
   <script>
     {{flutter_js}}
     {{flutter_build_config}}
-    
-    // Actually start the Flutter app
+
+    // Environment variables are added during container startup, by
+    // text replacement.
+    window.JOGOBORG_URL = "JOGOBORG_URL_PLACEHOLDER";
+
     window.addEventListener('load', function(ev) {
       _flutter.loader.load();
     });

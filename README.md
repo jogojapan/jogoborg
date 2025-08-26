@@ -24,9 +24,10 @@ All Jogoborg environment variables are prefixed with `JOGOBORG_` to avoid confli
 - `JOGOBORG_WEB_USERNAME`: Web interface username (default: admin)
 - `JOGOBORG_WEB_PASSWORD`: Web interface password (default: changeme)
 - `JOGOBORG_GPG_PASSPHRASE`: Encryption passphrase for credentials (default: changeme)
+- `JOGOBORG_URL`: The base URL of the service. This will be https://my.domain.tld if you are using a reverse proxy, or http://localhost:<port> if you have a local HTTP connection and <port> is the port you are exposing based on your docker-compose config. The frontend will be available on this URL. The backend will be at $JOGOBORG_URL/api.
 
 #### Optional
-- `JOGOBORG_WEB_PORT`: Web interface port (default: 8080)
+- `JOGOBORG_WEB_PORT`: Web interface port (default: 8080). This is the port used inside the container. Outside the container the port is one you are exposing based on your docker-compose config.
 
 #### Legacy Support
 For backward compatibility, the old unprefixed variables (`WEB_USERNAME`, `WEB_PASSWORD`, etc.) are still supported but will show deprecation warnings. Use the `JOGOBORG_` prefixed versions for new deployments.
@@ -59,6 +60,7 @@ services:
       - WEB_USERNAME=admin
       - WEB_PASSWORD=your_secure_password
       - GPG_PASSPHRASE=your_encryption_key
+      - JOGOBORG_URL=https://my.domain.tld
       - WEB_PORT=8080
     restart: unless-stopped
     healthcheck:

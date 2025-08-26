@@ -35,6 +35,8 @@ else
     echo "Docker socket not available - Docker commands will not work. You need to map /var/run/docker.sock into the container. See README.md for details on group permissions and SELinux-related caveats."
 fi
 
+sed -i "s|JOGOBORG_URL_PLACEHOLDER|${JOGOBORG_URL}|g" /app/build/web/index.html
+
 # Initialize configuration directory and run database migrations
 echo "Initializing database and running migrations..."
 python3 /app/scripts/init_db.py
