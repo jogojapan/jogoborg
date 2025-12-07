@@ -302,6 +302,13 @@ Both use the same codebase with minimal configuration differences.
 
 ## Getting Started
 
+### Step 0: Create Python Virtual Environment (Recommended)
+```bash
+# From project root
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
 ### Step 1: Navigate to local_test
 ```bash
 cd local_test

@@ -38,6 +38,11 @@ This checklist guides you through implementing and validating the local testing 
 
 ## Phase 2: Validation (Next Steps)
 
+### Python Virtual Environment Setup (Recommended)
+- [ ] Create virtual environment: `python3 -m venv venv`
+- [ ] Activate virtual environment: `source venv/bin/activate`
+- [ ] Verify activation (should see `(venv)` in prompt)
+
 ### Prerequisites Check
 - [ ] Python 3.7+ installed
 - [ ] SQLite 3 installed
@@ -50,6 +55,11 @@ This checklist guides you through implementing and validating the local testing 
 cd local_test
 make check-deps
 ```
+
+### Virtual Environment Activation
+- [ ] From project root, create venv: `python3 -m venv venv`
+- [ ] Activate venv: `source venv/bin/activate`
+- [ ] Verify `(venv)` appears in prompt
 
 ### Initial Setup
 - [ ] Navigate to `local_test` directory

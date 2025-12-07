@@ -438,6 +438,10 @@ This approach transforms your development workflow from slow Docker-based iterat
 ## Getting Started Now
 
 ```bash
+# Create and activate Python virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
 # Navigate to local_test directory
 cd local_test
 

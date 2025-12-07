@@ -20,6 +20,10 @@ A complete `local_test/` directory with:
 ## Quick Start (5 minutes)
 
 ```bash
+# Create and activate Python virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
 cd local_test
 
 # One-time setup

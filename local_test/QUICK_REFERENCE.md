@@ -3,6 +3,10 @@
 ## One-Liner Quick Start
 
 ```bash
+# Create virtual environment (one-time)
+python3 -m venv venv && source venv/bin/activate
+
+# Then setup and start
 cd local_test && ./setup.sh && ./run_local.sh
 # Then open http://localhost:8080
 ```

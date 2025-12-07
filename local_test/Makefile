@@ -26,6 +26,26 @@ help: ## Show this help message
 	@echo ""
 
 # ============================================================================
+# Virtual Environment
+# ============================================================================
+
+venv: ## Create Python virtual environment
+	@echo "$(GREEN)Creating Python virtual environment...$(NC)"
+	@python3 -m venv venv
+	@echo "$(GREEN)Virtual environment created!$(NC)"
+	@echo "Activate with: source venv/bin/activate"
+
+venv-activate: ## Show how to activate virtual environment
+	@echo "$(GREEN)To activate the virtual environment, run:$(NC)"
+	@echo "  source venv/bin/activate  (Linux/macOS)"
+	@echo "  venv\\Scripts\\activate     (Windows)"
+
+venv-clean: ## Remove virtual environment
+	@echo "$(YELLOW)Removing virtual environment...$(NC)"
+	@rm -rf venv
+	@echo "$(GREEN)Virtual environment removed$(NC)"
+
+# ============================================================================
 # Service Management
 # ============================================================================
 

@@ -4,6 +4,20 @@ This directory contains everything needed to run Jogoborg services locally for d
 
 ## Quick Start
 
+### 0. Create Python Virtual Environment (Recommended)
+
+It's recommended to use a Python virtual environment to isolate dependencies:
+
+```bash
+# From the project root directory
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# You should see (venv) in your prompt
+```
+
+This isolates Jogoborg's Python dependencies from your system Python installation.
+
 ### 1. Initial Setup (One-time)
 
 ```bash
@@ -69,6 +83,18 @@ local_test/
 ├── stop_local.sh           # Stop services
 └── reset_test_data.sh      # Reset to clean state
 ```
+
+## Python Virtual Environment
+
+For best practices, use a Python virtual environment to isolate dependencies:
+
+```bash
+# From project root (one-time)
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+See `VENV_SETUP.md` for detailed virtual environment setup and troubleshooting.
 
 ## Common Tasks
 

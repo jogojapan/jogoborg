@@ -12,6 +12,23 @@ echo "Jogoborg Local Testing Environment Setup"
 echo "=========================================="
 echo ""
 
+# Check if running in a virtual environment
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    echo "⚠️  WARNING: Not running in a Python virtual environment"
+    echo "   It's recommended to use a virtual environment:"
+    echo "   From project root: python3 -m venv venv"
+    echo "   Then activate: source venv/bin/activate"
+    echo ""
+    read -p "Continue anyway? (yes/no): " -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy][Ee][Ss]$ ]]; then
+        echo "Setup cancelled"
+        exit 0
+    fi
+fi
+
+echo ""
+
 # Check if Python 3 is available
 if ! command -v python3 &> /dev/null; then
     echo "❌ Error: Python 3 is not installed"
