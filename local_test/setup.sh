@@ -96,13 +96,23 @@ chmod +x "$SCRIPT_DIR/stop_local.sh" 2>/dev/null || true
 chmod +x "$SCRIPT_DIR/reset_test_data.sh" 2>/dev/null || true
 echo "✓ Scripts made executable"
 
+# Load environment variables
+echo ""
+echo "Loading environment configuration..."
+source "$SCRIPT_DIR/env.local"
+
+# Set local paths for testing
+export JOGOBORG_CONFIG_DIR="$SCRIPT_DIR/config"
+export JOGOBORG_BORGSPACE_DIR="$SCRIPT_DIR/borgspace"
+export JOGOBORG_LOG_DIR="$SCRIPT_DIR/logs"
+export JOGOBORG_SOURCESPACE_DIR="$SCRIPT_DIR/sourcespace"
+
 # Initialize database if needed
 echo ""
 echo "Initializing database..."
 if [ ! -f "$SCRIPT_DIR/config/jogoborg.db" ]; then
     cd "$PROJECT_ROOT"
-    PYTHONPATH="$PROJECT_ROOT" python3 scripts/init_db.py
-    mv jogoborg.db "$SCRIPT_DIR/config/" 2>/dev/null || true
+    PYTHONPATH="$PROJECT_ROOT" JOGOBORG_CONFIG_DIR="$SCRIPT_DIR/config" python3 scripts/init_db.py
     echo "✓ Database initialized"
 else
     echo "✓ Database already exists"
@@ -112,11 +122,8 @@ fi
 echo ""
 echo "Initializing GPG encryption..."
 if [ ! -f "$SCRIPT_DIR/config/jogoborg.gpg" ]; then
-    cd "$SCRIPT_DIR"
-    source env.local
-    export JOGOBORG_CONFIG_DIR="$SCRIPT_DIR/config"
     cd "$PROJECT_ROOT"
-    PYTHONPATH="$PROJECT_ROOT" python3 scripts/init_gpg.py
+    PYTHONPATH="$PROJECT_ROOT" JOGOBORG_CONFIG_DIR="$SCRIPT_DIR/config" JOGOBORG_GPG_PASSPHRASE="$JOGOBORG_GPG_PASSPHRASE" python3 scripts/init_gpg.py
     echo "✓ GPG key initialized"
 else
     echo "✓ GPG key already exists"

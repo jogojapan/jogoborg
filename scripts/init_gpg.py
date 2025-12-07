@@ -6,7 +6,12 @@ from cryptography.fernet import Fernet
 
 def init_gpg_key():
     """Initialize GPG key for encrypting sensitive configuration data."""
-    gpg_key_file = '/config/jogoborg.gpg'
+    # Use environment variable for config directory, default to /config for Docker
+    config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+    gpg_key_file = os.path.join(config_dir, 'jogoborg.gpg')
+    
+    # Ensure config directory exists
+    os.makedirs(config_dir, exist_ok=True)
     
     # Check if GPG key already exists
     if os.path.exists(gpg_key_file):
@@ -14,7 +19,7 @@ def init_gpg_key():
         return
     
     # Get passphrase from environment variable
-    passphrase = os.environ.get('GPG_PASSPHRASE', 'changeme')
+    passphrase = os.environ.get('JOGOBORG_GPG_PASSPHRASE', os.environ.get('GPG_PASSPHRASE', 'changeme'))
     
     if passphrase == 'changeme':
         print("WARNING: Using default GPG passphrase. Set GPG_PASSPHRASE environment variable for security.")
@@ -38,13 +43,15 @@ def init_gpg_key():
 
 def get_encryption_key():
     """Retrieve and decrypt the encryption key."""
-    gpg_key_file = '/config/jogoborg.gpg'
+    # Use environment variable for config directory, default to /config for Docker
+    config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+    gpg_key_file = os.path.join(config_dir, 'jogoborg.gpg')
     
     if not os.path.exists(gpg_key_file):
         print("ERROR: GPG key file not found. Run init_gpg.py first.")
         return None
     
-    passphrase = os.environ.get('GPG_PASSPHRASE', 'changeme')
+    passphrase = os.environ.get('JOGOBORG_GPG_PASSPHRASE', os.environ.get('GPG_PASSPHRASE', 'changeme'))
     passphrase_bytes = passphrase.encode('utf-8')
     
     try:

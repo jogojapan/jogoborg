@@ -4,10 +4,12 @@ import os
 
 def init_database():
     """Initialize SQLite database with required tables."""
-    db_path = '/config/jogoborg.db'
+    # Use environment variable for config directory, default to /config for Docker
+    config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+    db_path = os.path.join(config_dir, 'jogoborg.db')
     
     # Ensure config directory exists
-    os.makedirs('/config', exist_ok=True)
+    os.makedirs(config_dir, exist_ok=True)
     
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
