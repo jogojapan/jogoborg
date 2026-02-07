@@ -25,11 +25,11 @@ class _JobDialogState extends State<JobDialog> {
   final _preCommandController = TextEditingController();
   final _postCommandController = TextEditingController();
   final _repositoryPassphraseController = TextEditingController();
-  
+
   List<String> sourceDirs = [];
   Map<String, dynamic>? s3Config;
   Map<String, dynamic>? dbConfig;
-  
+
   bool isEditing = false;
   bool isSaving = false;
 
@@ -53,17 +53,17 @@ class _JobDialogState extends State<JobDialog> {
       _preCommandController.text = job['pre_command'] ?? '';
       _postCommandController.text = job['post_command'] ?? '';
       _repositoryPassphraseController.text = job['repository_passphrase'] ?? '';
-      
+
       if (job['source_directories'] is List) {
         sourceDirs = List<String>.from(job['source_directories']);
       } else if (job['source_directories'] is String) {
         sourceDirs = (job['source_directories'] as String).split(',');
       }
-      
+
       if (job['s3_config'] is Map) {
         s3Config = Map<String, dynamic>.from(job['s3_config']);
       }
-      
+
       if (job['db_config'] is Map) {
         dbConfig = Map<String, dynamic>.from(job['db_config']);
       }
@@ -92,14 +92,15 @@ class _JobDialogState extends State<JobDialog> {
 
   Future<void> _saveJob() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     if (sourceDirs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add at least one source directory')),
+        const SnackBar(
+            content: Text('Please add at least one source directory')),
       );
       return;
     }
-    
+
     if (_repositoryPassphraseController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Repository passphrase is required')),
@@ -112,7 +113,7 @@ class _JobDialogState extends State<JobDialog> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final jobData = {
         'name': _nameController.text,
         'schedule': _scheduleController.text,
@@ -128,7 +129,7 @@ class _JobDialogState extends State<JobDialog> {
         's3_config': s3Config,
         'db_config': dbConfig,
       };
-      
+
       if (isEditing) {
         await apiService.put(
           '/jobs/${widget.job!['id']}',
@@ -138,7 +139,7 @@ class _JobDialogState extends State<JobDialog> {
       } else {
         await apiService.post('/jobs', jobData, token: authService.token);
       }
-      
+
       if (mounted) {
         Navigator.of(context).pop(true);
       }
@@ -160,7 +161,7 @@ class _JobDialogState extends State<JobDialog> {
       context: context,
       builder: (context) => const _DirectoryPickerDialog(),
     );
-    
+
     if (result != null && !sourceDirs.contains(result)) {
       setState(() {
         sourceDirs.add(result);
@@ -179,7 +180,7 @@ class _JobDialogState extends State<JobDialog> {
       context: context,
       builder: (context) => _S3ConfigDialog(initialConfig: s3Config),
     );
-    
+
     if (result != null) {
       setState(() {
         s3Config = result;
@@ -195,7 +196,7 @@ class _JobDialogState extends State<JobDialog> {
         postCommand: _postCommandController.text,
       ),
     );
-    
+
     if (result != null) {
       setState(() {
         _preCommandController.text = result['preCommand'] ?? '';
@@ -209,7 +210,7 @@ class _JobDialogState extends State<JobDialog> {
       context: context,
       builder: (context) => _DatabaseConfigDialog(initialConfig: dbConfig),
     );
-    
+
     if (result != null) {
       setState(() {
         dbConfig = result;
@@ -221,7 +222,7 @@ class _JobDialogState extends State<JobDialog> {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
     final textColor = AppColors.primaryText;
-    
+
     return Dialog(
       backgroundColor: backgroundColor,
       child: Container(
@@ -235,10 +236,13 @@ class _JobDialogState extends State<JobDialog> {
             children: [
               Text(
                 isEditing ? 'Edit Backup Job' : 'New Backup Job',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor),
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: textColor),
               ),
               const SizedBox(height: 24),
-              
+
               Expanded(
                 child: ListView(
                   children: [
@@ -251,7 +255,8 @@ class _JobDialogState extends State<JobDialog> {
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Job Name',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               border: const OutlineInputBorder(),
                             ),
                             validator: (value) {
@@ -269,7 +274,8 @@ class _JobDialogState extends State<JobDialog> {
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Schedule (cron)',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               hintText: '0 2 * * *',
                               hintStyle: TextStyle(color: AppColors.inputHint),
                               border: const OutlineInputBorder(),
@@ -285,7 +291,7 @@ class _JobDialogState extends State<JobDialog> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Repository passphrase
                     TextFormField(
                       controller: _repositoryPassphraseController,
@@ -293,9 +299,11 @@ class _JobDialogState extends State<JobDialog> {
                       decoration: InputDecoration(
                         labelText: 'Repository Passphrase',
                         labelStyle: TextStyle(color: AppColors.inputLabel),
-                        hintText: 'Enter a strong passphrase for Borg encryption',
+                        hintText:
+                            'Enter a strong passphrase for Borg encryption',
                         hintStyle: TextStyle(color: AppColors.inputHint),
-                        helperText: 'This passphrase encrypts your backups. Keep it safe!',
+                        helperText:
+                            'This passphrase encrypts your backups. Keep it safe!',
                         helperStyle: TextStyle(color: AppColors.inputHelper),
                         border: const OutlineInputBorder(),
                       ),
@@ -316,40 +324,53 @@ class _JobDialogState extends State<JobDialog> {
                       },
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Action buttons
                     Row(
                       children: [
                         ElevatedButton.icon(
                           onPressed: _configureS3,
                           icon: const Icon(Icons.cloud),
-                          label: Text(s3Config != null ? 'S3 Configured' : 'Configure S3'),
+                          label: Text(s3Config != null
+                              ? 'S3 Configured'
+                              : 'Configure S3'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: s3Config != null ? Colors.green : null,
+                            backgroundColor:
+                                s3Config != null ? Colors.green : null,
                           ),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
                           onPressed: _configureCommands,
                           icon: const Icon(Icons.terminal),
-                          label: Text((_preCommandController.text.isNotEmpty || _postCommandController.text.isNotEmpty) ? 'Commands Configured' : 'Configure Commands'),
+                          label: Text((_preCommandController.text.isNotEmpty ||
+                                  _postCommandController.text.isNotEmpty)
+                              ? 'Commands Configured'
+                              : 'Configure Commands'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: (_preCommandController.text.isNotEmpty || _postCommandController.text.isNotEmpty) ? Colors.green : null,
+                            backgroundColor:
+                                (_preCommandController.text.isNotEmpty ||
+                                        _postCommandController.text.isNotEmpty)
+                                    ? Colors.green
+                                    : null,
                           ),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton.icon(
                           onPressed: _configureDatabase,
                           icon: const Icon(Icons.storage),
-                          label: Text(dbConfig != null ? 'DB Configured' : 'Configure DB'),
+                          label: Text(dbConfig != null
+                              ? 'DB Configured'
+                              : 'Configure DB'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: dbConfig != null ? Colors.green : null,
+                            backgroundColor:
+                                dbConfig != null ? Colors.green : null,
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Compression and exclusions
                     TextFormField(
                       controller: _compressionController,
@@ -363,7 +384,7 @@ class _JobDialogState extends State<JobDialog> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    
+
                     TextFormField(
                       controller: _excludePatternsController,
                       style: TextStyle(color: AppColors.inputText),
@@ -377,7 +398,7 @@ class _JobDialogState extends State<JobDialog> {
                       maxLines: 3,
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Retention settings
                     Row(
                       children: [
@@ -387,7 +408,8 @@ class _JobDialogState extends State<JobDialog> {
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Keep Daily',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               border: const OutlineInputBorder(),
                             ),
                             keyboardType: TextInputType.number,
@@ -400,7 +422,8 @@ class _JobDialogState extends State<JobDialog> {
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Keep Monthly',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               border: const OutlineInputBorder(),
                             ),
                             keyboardType: TextInputType.number,
@@ -413,7 +436,8 @@ class _JobDialogState extends State<JobDialog> {
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Keep Yearly',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               border: const OutlineInputBorder(),
                             ),
                             keyboardType: TextInputType.number,
@@ -422,36 +446,43 @@ class _JobDialogState extends State<JobDialog> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    
+
                     // Source directories
                     Text(
                       'Source Directories',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor),
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: textColor),
                     ),
                     const SizedBox(height: 8),
-                    
+
                     ElevatedButton.icon(
                       onPressed: _addSourceDirectory,
                       icon: const Icon(Icons.add),
                       label: const Text('Add Source Directory'),
                     ),
                     const SizedBox(height: 8),
-                    
+
                     ...sourceDirs.map((dir) => Card(
-                      color: AppColors.cardBackground, // Slightly lighter than main background
-                      child: ListTile(
-                        leading: Icon(Icons.folder, color: AppColors.selectedBlue),
-                        title: Text(dir, style: TextStyle(color: AppColors.inputText)),
-                        trailing: IconButton(
-                          icon: Icon(Icons.remove, color: AppColors.accentRed),
-                          onPressed: () => _removeSourceDirectory(dir),
-                        ),
-                      ),
-                    )),
+                          color: AppColors
+                              .cardBackground, // Slightly lighter than main background
+                          child: ListTile(
+                            leading: Icon(Icons.folder,
+                                color: AppColors.selectedBlue),
+                            title: Text(dir,
+                                style: TextStyle(color: AppColors.inputText)),
+                            trailing: IconButton(
+                              icon: Icon(Icons.remove,
+                                  color: AppColors.accentRed),
+                              onPressed: () => _removeSourceDirectory(dir),
+                            ),
+                          ),
+                        )),
                   ],
                 ),
               ),
-              
+
               // Action buttons
               const SizedBox(height: 16),
               Row(
@@ -502,13 +533,13 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final response = await apiService.post(
         '/sources/browse',
         {'path': currentPath},
         token: authService.token,
       );
-      
+
       setState(() {
         items = List<Map<String, dynamic>>.from(response['items'] ?? []);
         isLoading = false;
@@ -522,10 +553,11 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
     final textColor = AppColors.primaryText;
-    
+
     return AlertDialog(
       backgroundColor: backgroundColor,
-      title: Text('Select Source Directory', style: TextStyle(color: AppColors.inputText)),
+      title: Text('Select Source Directory',
+          style: TextStyle(color: AppColors.inputText)),
       content: SizedBox(
         width: 500,
         height: 400,
@@ -537,7 +569,8 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
                 Expanded(
                   child: Text(
                     currentPath,
-                    style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: textColor),
                   ),
                 ),
                 ElevatedButton(
@@ -547,7 +580,7 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
               ],
             ),
             const Divider(),
-            
+
             // Directory contents
             Expanded(
               child: isLoading
@@ -557,12 +590,14 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
                       itemBuilder: (context, index) {
                         final item = items[index];
                         final isDirectory = item['is_directory'] == true;
-                        
+
                         if (!isDirectory) return const SizedBox.shrink();
-                        
+
                         return ListTile(
-                          leading: Icon(Icons.folder, color: AppColors.selectedBlue),
-                          title: Text(item['name'] ?? 'Unknown', style: TextStyle(color: AppColors.inputText)),
+                          leading:
+                              Icon(Icons.folder, color: AppColors.selectedBlue),
+                          title: Text(item['name'] ?? 'Unknown',
+                              style: TextStyle(color: AppColors.inputText)),
                           onTap: () {
                             setState(() {
                               currentPath = item['path'];
@@ -624,18 +659,18 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
-    final textColor = AppColors.primaryText;
-    
+
     return AlertDialog(
       backgroundColor: backgroundColor,
-      title: Text('S3 Configuration', style: TextStyle(color: AppColors.inputText)),
+      title: Text('S3 Configuration',
+          style: TextStyle(color: AppColors.inputText)),
       content: SizedBox(
         width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: _provider,
+              initialValue: _provider,
               style: TextStyle(color: AppColors.inputText),
               decoration: InputDecoration(
                 labelText: 'Provider',
@@ -649,7 +684,6 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               onChanged: (value) => setState(() => _provider = value!),
             ),
             const SizedBox(height: 16),
-            
             if (_provider == 'minio')
               TextFormField(
                 controller: _endpointController,
@@ -663,7 +697,6 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
                 ),
               ),
             if (_provider == 'minio') const SizedBox(height: 16),
-            
             TextFormField(
               controller: _bucketController,
               style: TextStyle(color: AppColors.inputText),
@@ -674,7 +707,6 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            
             if (_provider == 'aws')
               TextFormField(
                 controller: _regionController,
@@ -688,7 +720,6 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
                 ),
               ),
             if (_provider == 'aws') const SizedBox(height: 16),
-            
             TextFormField(
               controller: _accessKeyController,
               style: TextStyle(color: AppColors.inputText),
@@ -699,7 +730,6 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            
             TextFormField(
               controller: _secretKeyController,
               style: TextStyle(color: AppColors.inputText),
@@ -711,10 +741,9 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               obscureText: true,
             ),
             const SizedBox(height: 16),
-            
             if (_provider == 'aws')
               DropdownButtonFormField<String>(
-                value: _storageClass,
+                initialValue: _storageClass,
                 style: TextStyle(color: AppColors.inputText),
                 decoration: InputDecoration(
                   labelText: 'Storage Class',
@@ -723,9 +752,11 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
                 ),
                 items: const [
                   DropdownMenuItem(value: 'STANDARD', child: Text('Standard')),
-                  DropdownMenuItem(value: 'STANDARD_IA', child: Text('Standard-IA')),
+                  DropdownMenuItem(
+                      value: 'STANDARD_IA', child: Text('Standard-IA')),
                   DropdownMenuItem(value: 'GLACIER', child: Text('Glacier')),
-                  DropdownMenuItem(value: 'DEEP_ARCHIVE', child: Text('Deep Archive')),
+                  DropdownMenuItem(
+                      value: 'DEEP_ARCHIVE', child: Text('Deep Archive')),
                 ],
                 onChanged: (value) => setState(() => _storageClass = value!),
               ),
@@ -793,11 +824,11 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
-    final textColor = AppColors.primaryText;
-    
+
     return AlertDialog(
       backgroundColor: backgroundColor,
-      title: Text('Configure Commands', style: TextStyle(color: AppColors.inputText)),
+      title: Text('Configure Commands',
+          style: TextStyle(color: AppColors.inputText)),
       content: SizedBox(
         width: 500,
         child: Column(
@@ -809,7 +840,6 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
               style: TextStyle(color: AppColors.secondaryText, fontSize: 14),
             ),
             const SizedBox(height: 16),
-            
             TextFormField(
               controller: _preCommandController,
               style: TextStyle(color: AppColors.inputText),
@@ -818,14 +848,14 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
                 labelStyle: TextStyle(color: AppColors.inputLabel),
                 hintText: 'docker stop myservice',
                 hintStyle: TextStyle(color: AppColors.inputHint),
-                helperText: 'Command to run before the backup starts (e.g., suspend services)',
+                helperText:
+                    'Command to run before the backup starts (e.g., suspend services)',
                 helperStyle: TextStyle(color: AppColors.inputHelper),
                 border: const OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
             const SizedBox(height: 16),
-            
             TextFormField(
               controller: _postCommandController,
               style: TextStyle(color: AppColors.inputText),
@@ -834,14 +864,14 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
                 labelStyle: TextStyle(color: AppColors.inputLabel),
                 hintText: 'docker start myservice',
                 hintStyle: TextStyle(color: AppColors.inputHint),
-                helperText: 'Command to run after backup completes (success or failure)',
+                helperText:
+                    'Command to run after backup completes (success or failure)',
                 helperStyle: TextStyle(color: AppColors.inputHelper),
                 border: const OutlineInputBorder(),
               ),
               maxLines: 2,
             ),
             const SizedBox(height: 16),
-            
             Text(
               'Note: Commands will run with a 5-minute timeout. Non-zero exit codes will be logged as warnings but won\'t fail the backup.',
               style: TextStyle(color: AppColors.accentOrange, fontSize: 12),
@@ -899,7 +929,7 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       await apiService.post(
         '/database/test',
         {
@@ -913,7 +943,7 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
         },
         token: authService.token,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -937,18 +967,18 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
-    final textColor = AppColors.primaryText;
-    
+
     return AlertDialog(
       backgroundColor: backgroundColor,
-      title: Text('Database Configuration', style: TextStyle(color: AppColors.inputText)),
+      title: Text('Database Configuration',
+          style: TextStyle(color: AppColors.inputText)),
       content: SizedBox(
         width: 400,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
-              value: _dbType,
+              initialValue: _dbType,
               style: TextStyle(color: AppColors.inputText),
               decoration: InputDecoration(
                 labelText: 'Database Type',
@@ -956,18 +986,20 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
                 border: const OutlineInputBorder(),
               ),
               items: const [
-                DropdownMenuItem(value: 'postgresql', child: Text('PostgreSQL')),
-                DropdownMenuItem(value: 'mariadb', child: Text('MariaDB/MySQL')),
+                DropdownMenuItem(
+                    value: 'postgresql', child: Text('PostgreSQL')),
+                DropdownMenuItem(
+                    value: 'mariadb', child: Text('MariaDB/MySQL')),
               ],
               onChanged: (value) {
                 setState(() {
                   _dbType = value!;
-                  _portController.text = value == 'postgresql' ? '5432' : '3306';
+                  _portController.text =
+                      value == 'postgresql' ? '5432' : '3306';
                 });
               },
             ),
             const SizedBox(height: 16),
-            
             Row(
               children: [
                 Expanded(
@@ -999,7 +1031,6 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
               ],
             ),
             const SizedBox(height: 16),
-            
             TextFormField(
               controller: _usernameController,
               style: TextStyle(color: AppColors.inputText),
@@ -1010,7 +1041,6 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            
             TextFormField(
               controller: _passwordController,
               style: TextStyle(color: AppColors.inputText),
@@ -1022,7 +1052,6 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
               obscureText: true,
             ),
             const SizedBox(height: 16),
-            
             TextFormField(
               controller: _databaseController,
               style: TextStyle(color: AppColors.inputText),
@@ -1033,7 +1062,6 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
               ),
             ),
             const SizedBox(height: 16),
-            
             TextFormField(
               controller: _tablesController,
               style: TextStyle(color: AppColors.inputText),
@@ -1047,7 +1075,6 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
               maxLines: 3,
             ),
             const SizedBox(height: 16),
-            
             ElevatedButton(
               onPressed: _testConnection,
               child: const Text('Test Connection'),
@@ -1069,7 +1096,10 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
               'username': _usernameController.text,
               'password': _passwordController.text,
               'database': _databaseController.text,
-              'tables': _tablesController.text.split('\n').where((t) => t.isNotEmpty).toList(),
+              'tables': _tablesController.text
+                  .split('\n')
+                  .where((t) => t.isNotEmpty)
+                  .toList(),
             };
             Navigator.of(context).pop(config);
           },
