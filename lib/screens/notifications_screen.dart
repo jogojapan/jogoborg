@@ -316,7 +316,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               Expanded(
                                 flex: 3,
                                 child: DropdownButtonFormField<String>(
-                                  value: _smtpSecurity,
+                                  initialValue: _smtpSecurity,
                                   style: TextStyle(color: AppColors.inputText),
                                   decoration: InputDecoration(
                                     labelText: 'Security',
@@ -493,7 +493,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             children: [
                               Expanded(
                                 child: DropdownButtonFormField<String>(
-                                  value: _successPriority,
+                                  initialValue: _successPriority,
                                   style: TextStyle(color: AppColors.inputText),
                                   decoration: InputDecoration(
                                     labelText: 'Success Priority',
@@ -517,7 +517,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               const SizedBox(width: 16),
                               Expanded(
                                 child: DropdownButtonFormField<String>(
-                                  value: _errorPriority,
+                                  initialValue: _errorPriority,
                                   style: TextStyle(color: AppColors.inputText),
                                   decoration: InputDecoration(
                                     labelText: 'Error Priority',
