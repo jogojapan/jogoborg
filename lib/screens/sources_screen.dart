@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import '../services/theme_service.dart';
 import '../widgets/app_drawer.dart';
 
 class SourcesScreen extends StatefulWidget {
@@ -32,20 +31,20 @@ class _SourcesScreenState extends State<SourcesScreen> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final response = await apiService.post(
         '/sources/browse',
         {'path': currentPath},
         token: authService.token,
       );
-      
+
       setState(() {
         items = List<Map<String, dynamic>>.from(response['items'] ?? []);
         isLoading = false;
       });
     } catch (e) {
       setState(() => isLoading = false);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load directory: $e')),
@@ -137,7 +136,7 @@ class _SourcesScreenState extends State<SourcesScreen> {
               ],
             ),
           ),
-          
+
           // Directory contents
           Expanded(
             child: isLoading
@@ -189,19 +188,19 @@ class _FileListTileState extends State<_FileListTile> {
 
   Future<void> _calculateSize() async {
     if (showingSize) return;
-    
+
     setState(() => showingSize = true);
-    
+
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final response = await apiService.post(
         '/sources/size',
         {'path': widget.item['path']},
         token: authService.token,
       );
-      
+
       setState(() {
         calculatedSize = _formatBytes(response['size'] ?? 0);
       });
@@ -245,9 +244,9 @@ class _FileListTileState extends State<_FileListTile> {
               children: [
                 if (isDirectory) ...[
                   Text(
-                    calculatedSize != null 
+                    calculatedSize != null
                         ? 'Size: $calculatedSize'
-                        : showingSize 
+                        : showingSize
                             ? 'Calculating...'
                             : 'Size: Click to calculate',
                     style: const TextStyle(fontSize: 12),
@@ -287,12 +286,12 @@ class _FileListTileState extends State<_FileListTile> {
     const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
     int i = 0;
     double size = bytes.toDouble();
-    
+
     while (size >= 1024 && i < suffixes.length - 1) {
       size /= 1024;
       i++;
     }
-    
+
     return '${size.toStringAsFixed(1)} ${suffixes[i]}';
   }
 }
