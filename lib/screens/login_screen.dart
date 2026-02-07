@@ -59,8 +59,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.cardBackground;
-    final textColor = AppColors.primaryText;
-    
+
     return Scaffold(
       body: Center(
         child: Container(
@@ -87,7 +86,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 8),
                     Text(
                       'Borg Backup Manager',
-                      style: TextStyle(fontSize: 16, color: AppColors.secondaryText),
+                      style: TextStyle(
+                          fontSize: 16, color: AppColors.secondaryText),
                     ),
                     const SizedBox(height: 32),
                     TextFormField(
@@ -97,7 +97,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         labelText: 'Username',
                         labelStyle: TextStyle(color: AppColors.inputLabel),
                         border: const OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person, color: AppColors.inputIcon),
+                        prefixIcon:
+                            Icon(Icons.person, color: AppColors.inputIcon),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
@@ -115,7 +116,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         labelText: 'Password',
                         labelStyle: TextStyle(color: AppColors.inputLabel),
                         border: const OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.lock, color: AppColors.inputIcon),
+                        prefixIcon:
+                            Icon(Icons.lock, color: AppColors.inputIcon),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
