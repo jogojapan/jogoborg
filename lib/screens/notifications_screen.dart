@@ -15,7 +15,7 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final _formKey = GlobalKey<FormState>();
-  
+
   // SMTP settings
   final _smtpHostController = TextEditingController();
   final _smtpPortController = TextEditingController();
@@ -24,13 +24,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final _smtpSenderEmailController = TextEditingController();
   final _smtpRecipientEmailController = TextEditingController();
   String _smtpSecurity = 'STARTTLS';
-  
+
   // Webhook settings
   final _webhookUrlController = TextEditingController();
   final _webhookTokenController = TextEditingController();
   String _successPriority = 'normal';
   String _errorPriority = 'high';
-  
+
   bool isLoading = true;
   bool isSaving = false;
 
@@ -59,10 +59,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
-      final response = await apiService.get('/notifications/edit', token: authService.token);
+
+      final response =
+          await apiService.get('/notifications/edit', token: authService.token);
       final settings = response['settings'] ?? {};
-      
+
       // Load SMTP settings
       final smtpConfig = settings['smtp_config'] ?? {};
       _smtpHostController.text = smtpConfig['host'] ?? '';
@@ -72,18 +73,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _smtpSenderEmailController.text = smtpConfig['sender_email'] ?? '';
       _smtpRecipientEmailController.text = smtpConfig['recipient_email'] ?? '';
       _smtpSecurity = smtpConfig['security'] ?? 'STARTTLS';
-      
+
       // Load webhook settings
       final webhookConfig = settings['webhook_config'] ?? {};
       _webhookUrlController.text = webhookConfig['url'] ?? '';
       _webhookTokenController.text = webhookConfig['token'] ?? '';
       _successPriority = webhookConfig['success_priority'] ?? 'normal';
       _errorPriority = webhookConfig['error_priority'] ?? 'high';
-      
+
       setState(() => isLoading = false);
     } catch (e) {
       setState(() => isLoading = false);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load notification settings: $e')),
@@ -100,7 +101,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final settings = {
         'smtp_config': {
           'host': _smtpHostController.text,
@@ -118,12 +119,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           'error_priority': _errorPriority,
         },
       };
-      
-      await apiService.put('/notifications', settings, token: authService.token);
-      
+
+      await apiService.put('/notifications', settings,
+          token: authService.token);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notification settings saved successfully')),
+          const SnackBar(
+              content: Text('Notification settings saved successfully')),
         );
       }
     } catch (e) {
@@ -143,7 +146,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       await apiService.post(
         '/notifications/test/smtp',
         {
@@ -157,7 +160,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         },
         token: authService.token,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -182,7 +185,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       await apiService.post(
         '/notifications/test/webhook',
         {
@@ -192,7 +195,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         },
         token: authService.token,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -215,9 +218,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = AppColors.primaryBackground;
     final textColor = AppColors.primaryText;
-    
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notification Settings'),
@@ -274,20 +276,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          
                           TextFormField(
                             controller: _smtpHostController,
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'SMTP Host',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               hintText: 'smtp.gmail.com',
                               hintStyle: TextStyle(color: AppColors.inputHint),
                               border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
                           Row(
                             children: [
                               Expanded(
@@ -297,11 +298,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   style: TextStyle(color: AppColors.inputText),
                                   decoration: InputDecoration(
                                     labelText: 'Port',
-                                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                                    labelStyle:
+                                        TextStyle(color: AppColors.inputLabel),
                                     hintText: '587 (STARTTLS) / 465 (SSL)',
-                                    hintStyle: TextStyle(color: AppColors.inputHint),
-                                    helperText: '587=STARTTLS, 465=SSL, 25=None',
-                                    helperStyle: TextStyle(color: AppColors.inputHelper),
+                                    hintStyle:
+                                        TextStyle(color: AppColors.inputHint),
+                                    helperText:
+                                        '587=STARTTLS, 465=SSL, 25=None',
+                                    helperStyle:
+                                        TextStyle(color: AppColors.inputHelper),
                                     border: const OutlineInputBorder(),
                                   ),
                                   keyboardType: TextInputType.number,
@@ -315,19 +320,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   style: TextStyle(color: AppColors.inputText),
                                   decoration: InputDecoration(
                                     labelText: 'Security',
-                                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                                    labelStyle:
+                                        TextStyle(color: AppColors.inputLabel),
                                     border: const OutlineInputBorder(),
                                   ),
                                   items: const [
-                                    DropdownMenuItem(value: 'STARTTLS', child: Text('STARTTLS')),
-                                    DropdownMenuItem(value: 'SSL', child: Text('SSL/TLS')),
-                                    DropdownMenuItem(value: 'NONE', child: Text('None')),
+                                    DropdownMenuItem(
+                                        value: 'STARTTLS',
+                                        child: Text('STARTTLS')),
+                                    DropdownMenuItem(
+                                        value: 'SSL', child: Text('SSL/TLS')),
+                                    DropdownMenuItem(
+                                        value: 'NONE', child: Text('None')),
                                   ],
                                   onChanged: (value) {
                                     setState(() {
                                       _smtpSecurity = value!;
                                       // Auto-update port based on security type if port is default
-                                      if (_smtpPortController.text == '587' || _smtpPortController.text == '465' || _smtpPortController.text.isEmpty) {
+                                      if (_smtpPortController.text == '587' ||
+                                          _smtpPortController.text == '465' ||
+                                          _smtpPortController.text.isEmpty) {
                                         if (value == 'SSL') {
                                           _smtpPortController.text = '465';
                                         } else if (value == 'STARTTLS') {
@@ -343,36 +355,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          
                           TextFormField(
                             controller: _smtpUsernameController,
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Username',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
                           TextFormField(
                             controller: _smtpPasswordController,
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Password',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               border: const OutlineInputBorder(),
                             ),
                             obscureText: true,
                           ),
                           const SizedBox(height: 16),
-                          
                           TextFormField(
                             controller: _smtpSenderEmailController,
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Sender Email Address',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               hintText: 'backups@example.com',
                               hintStyle: TextStyle(color: AppColors.inputHint),
                               border: const OutlineInputBorder(),
@@ -381,29 +393,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               if (value == null || value.isEmpty) {
                                 return 'Sender email address is required';
                               }
-                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                                  .hasMatch(value)) {
                                 return 'Enter a valid email address';
                               }
                               return null;
                             },
                           ),
                           const SizedBox(height: 16),
-                          
                           TextFormField(
                             controller: _smtpRecipientEmailController,
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Recipient Email Address (optional)',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               hintText: 'admin@example.com',
                               hintStyle: TextStyle(color: AppColors.inputHint),
-                              helperText: 'Leave empty to send to sender address',
-                              helperStyle: TextStyle(color: AppColors.inputHelper),
+                              helperText:
+                                  'Leave empty to send to sender address',
+                              helperStyle:
+                                  TextStyle(color: AppColors.inputHelper),
                               border: const OutlineInputBorder(),
                             ),
                             validator: (value) {
                               if (value != null && value.isNotEmpty) {
-                                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$')
+                                    .hasMatch(value)) {
                                   return 'Enter a valid email address';
                                 }
                               }
@@ -414,9 +430,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Webhook Configuration
                   Card(
                     color: AppColors.cardBackground,
@@ -445,33 +461,34 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             ],
                           ),
                           const SizedBox(height: 16),
-                          
                           TextFormField(
                             controller: _webhookUrlController,
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'Gotify Server URL',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               hintText: 'https://notify.chobycat.com',
                               hintStyle: TextStyle(color: AppColors.inputHint),
-                              helperText: 'Base URL only - /message will be added automatically',
-                              helperStyle: TextStyle(color: AppColors.inputHelper),
+                              helperText:
+                                  'Base URL only - /message will be added automatically',
+                              helperStyle:
+                                  TextStyle(color: AppColors.inputHelper),
                               border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
                           TextFormField(
                             controller: _webhookTokenController,
                             style: TextStyle(color: AppColors.inputText),
                             decoration: InputDecoration(
                               labelText: 'App Token',
-                              labelStyle: TextStyle(color: AppColors.inputLabel),
+                              labelStyle:
+                                  TextStyle(color: AppColors.inputLabel),
                               border: const OutlineInputBorder(),
                             ),
                           ),
                           const SizedBox(height: 16),
-                          
                           Row(
                             children: [
                               Expanded(
@@ -480,13 +497,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   style: TextStyle(color: AppColors.inputText),
                                   decoration: InputDecoration(
                                     labelText: 'Success Priority',
-                                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                                    labelStyle:
+                                        TextStyle(color: AppColors.inputLabel),
                                     border: const OutlineInputBorder(),
                                   ),
                                   items: const [
-                                    DropdownMenuItem(value: 'low', child: Text('Low')),
-                                    DropdownMenuItem(value: 'normal', child: Text('Normal')),
-                                    DropdownMenuItem(value: 'high', child: Text('High')),
+                                    DropdownMenuItem(
+                                        value: 'low', child: Text('Low')),
+                                    DropdownMenuItem(
+                                        value: 'normal', child: Text('Normal')),
+                                    DropdownMenuItem(
+                                        value: 'high', child: Text('High')),
                                   ],
                                   onChanged: (value) {
                                     setState(() => _successPriority = value!);
@@ -500,13 +521,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                   style: TextStyle(color: AppColors.inputText),
                                   decoration: InputDecoration(
                                     labelText: 'Error Priority',
-                                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                                    labelStyle:
+                                        TextStyle(color: AppColors.inputLabel),
                                     border: const OutlineInputBorder(),
                                   ),
                                   items: const [
-                                    DropdownMenuItem(value: 'low', child: Text('Low')),
-                                    DropdownMenuItem(value: 'normal', child: Text('Normal')),
-                                    DropdownMenuItem(value: 'high', child: Text('High')),
+                                    DropdownMenuItem(
+                                        value: 'low', child: Text('Low')),
+                                    DropdownMenuItem(
+                                        value: 'normal', child: Text('Normal')),
+                                    DropdownMenuItem(
+                                        value: 'high', child: Text('High')),
                                   ],
                                   onChanged: (value) {
                                     setState(() => _errorPriority = value!);
@@ -519,9 +544,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                     ),
                   ),
-                  
+
                   const SizedBox(height: 24),
-                  
+
                   // Save button
                   SizedBox(
                     width: double.infinity,

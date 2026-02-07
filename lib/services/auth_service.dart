@@ -1,22 +1,22 @@
-import 'dart:html' as html;
 import 'package:js/js_util.dart' as js_util;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:crypto/crypto.dart';
 
 class AuthService extends ChangeNotifier {
-  static const _tokenKey = 'auth_token';
   static String get baseUrl {
     try {
-      final url = js_util.getProperty(html.window,'JOGOBORG_URL') as String?;
+      final url =
+          js_util.getProperty(js_util.globalThis, 'JOGOBORG_URL') as String?;
       if (url != null && url.isNotEmpty) {
         return url;
       } else {
-        print('JOGOBORG_URL environment variable not defined. Falling back to the default backend URL.');
+        print(
+            'JOGOBORG_URL environment variable not defined. Falling back to the default backend URL.');
       }
     } catch (e) {
-      print('An error occurred when trying to acccess the value of the JOGOBORG_URL environment variable not defined. Falling back to the default backend URL.');
+      print(
+          'An error occurred when trying to acccess the value of the JOGOBORG_URL environment variable not defined. Falling back to the default backend URL.');
     }
     return 'http://localhost:8080'; // fallback
   }
