@@ -31,17 +31,18 @@ class _JobsScreenState extends State<JobsScreen> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final response = await apiService.get('/jobs', token: authService.token);
-      
-      setState(() {
-        jobs = List<Map<String, dynamic>>.from(response['jobs'] ?? []);
-        isLoading = false;
-      });
-    } catch (e) {
-      setState(() => isLoading = false);
-      
+
       if (mounted) {
+        setState(() {
+          jobs = List<Map<String, dynamic>>.from(response['jobs'] ?? []);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load jobs: $e')),
         );
@@ -54,7 +55,7 @@ class _JobsScreenState extends State<JobsScreen> {
       context: context,
       builder: (context) => const JobDialog(),
     );
-    
+
     if (result == true) {
       _loadJobs(); // Refresh the job list
     }
@@ -65,13 +66,18 @@ class _JobsScreenState extends State<JobsScreen> {
       context: context,
       builder: (context) => JobDialog(job: job),
     );
-    
+
     if (result == true) {
       _loadJobs(); // Refresh the job list
     }
   }
 
   Future<void> _deleteJob(Map<String, dynamic> job) async {
+    // Extract context-dependent values before any async operation
+    final apiService = context.read<ApiService>();
+    final authService = context.read<AuthService>();
+    final messenger = ScaffoldMessenger.of(context);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -94,20 +100,17 @@ class _JobsScreenState extends State<JobsScreen> {
     if (confirmed != true) return;
 
     try {
-      final apiService = context.read<ApiService>();
-      final authService = context.read<AuthService>();
-      
       await apiService.delete('/jobs/${job['id']}', token: authService.token);
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(content: Text('Job deleted successfully')),
         );
         _loadJobs();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text('Failed to delete job: $e')),
         );
       }
@@ -115,11 +118,17 @@ class _JobsScreenState extends State<JobsScreen> {
   }
 
   Future<void> _triggerJob(Map<String, dynamic> job) async {
+    // Extract context-dependent values before any async operation
+    final apiService = context.read<ApiService>();
+    final authService = context.read<AuthService>();
+    final messenger = ScaffoldMessenger.of(context);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Run Job Now'),
-        content: Text('Are you sure you want to trigger job "${job['name']}" right now?\n\nThis will start the backup process immediately.'),
+        content: Text(
+            'Are you sure you want to trigger job "${job['name']}" right now?\n\nThis will start the backup process immediately.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -137,20 +146,20 @@ class _JobsScreenState extends State<JobsScreen> {
     if (confirmed != true) return;
 
     try {
-      final apiService = context.read<ApiService>();
-      final authService = context.read<AuthService>();
-      
-      await apiService.post('/jobs/${job['id']}/trigger', {}, token: authService.token);
-      
+      await apiService.post('/jobs/${job['id']}/trigger', {},
+          token: authService.token);
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Job "${job['name']}" has been triggered and is running in the background')),
+        messenger.showSnackBar(
+          SnackBar(
+              content: Text(
+                  'Job "${job['name']}" has been triggered and is running in the background')),
         );
         _loadJobs(); // Refresh the job list to show updated status
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text('Failed to trigger job: $e')),
         );
       }
@@ -171,7 +180,8 @@ class _JobsScreenState extends State<JobsScreen> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
-              await context.read<AuthService>().logout();
+              final authService = context.read<AuthService>();
+              await authService.logout();
               if (context.mounted) {
                 context.go('/login');
               }
@@ -339,7 +349,8 @@ class _JobCard extends StatelessWidget {
             ),
             _JobDetailRow(
               label: 'Retention',
-              value: 'Daily: ${job['keep_daily']}, Monthly: ${job['keep_monthly']}, Yearly: ${job['keep_yearly']}',
+              value:
+                  'Daily: ${job['keep_daily']}, Monthly: ${job['keep_monthly']}, Yearly: ${job['keep_yearly']}',
               textColor: textColor,
             ),
             if (sourceDirs.isNotEmpty) ...[
@@ -350,15 +361,17 @@ class _JobCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               ...sourceDirs.map((dir) => Padding(
-                padding: const EdgeInsets.only(left: 16, bottom: 2),
-                child: Row(
-                  children: [
-                    Icon(Icons.folder, size: 16, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Expanded(child: Text(dir, style: TextStyle(color: textColor))),
-                  ],
-                ),
-              )),
+                    padding: const EdgeInsets.only(left: 16, bottom: 2),
+                    child: Row(
+                      children: [
+                        Icon(Icons.folder, size: 16, color: Colors.blue),
+                        SizedBox(width: 8),
+                        Expanded(
+                            child:
+                                Text(dir, style: TextStyle(color: textColor))),
+                      ],
+                    ),
+                  )),
             ],
             // Last run logs
             const SizedBox(height: 12),
@@ -451,12 +464,12 @@ class _LastRunsSectionState extends State<_LastRunsSection> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final response = await apiService.get(
         '/jobs/${widget.jobId}/logs?limit=3',
         token: authService.token,
       );
-      
+
       setState(() {
         lastRuns = List<Map<String, dynamic>>.from(response['logs'] ?? []);
         isLoading = false;
@@ -489,7 +502,8 @@ class _LastRunsSectionState extends State<_LastRunsSection> {
       children: [
         Text(
           'Last 3 runs:',
-          style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryText),
+          style: TextStyle(
+              fontWeight: FontWeight.bold, color: AppColors.primaryText),
         ),
         const SizedBox(height: 4),
         ...lastRuns.map((run) {
@@ -500,7 +514,7 @@ class _LastRunsSectionState extends State<_LastRunsSection> {
           final finishedAt = run['finished_at'] != null
               ? DateTime.parse(run['finished_at'])
               : null;
-          
+
           final statusColor = status == 'completed'
               ? Colors.green
               : status == 'failed'
