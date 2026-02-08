@@ -75,3 +75,5 @@ volumes/
 /local_test/sourcespace/sample_data
 /local_test/config
 /local_test/env.local
+/local_test/.scheduler.pid
+/local_test/.web_server.pid

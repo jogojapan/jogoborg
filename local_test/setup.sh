@@ -37,18 +37,16 @@ fi
 
 echo "✓ Python 3 found: $(python3 --version)"
 
-# Check if required Python packages are available
+# Install required Python packages
 echo ""
-echo "Checking Python dependencies..."
-python3 -c "import cryptography" 2>/dev/null || {
-    echo "⚠ Warning: cryptography package not found"
-    echo "  Install with: pip3 install cryptography"
-}
-
-python3 -c "import croniter" 2>/dev/null || {
-    echo "⚠ Warning: croniter package not found"
-    echo "  Install with: pip3 install croniter"
-}
+echo "Installing Python dependencies..."
+if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
+    pip3 install -r "$PROJECT_ROOT/requirements.txt"
+    echo "✓ Python dependencies installed"
+else
+    echo "⚠ Warning: requirements.txt not found"
+    echo "  Dependencies may not be installed"
+fi
 
 # Create directories
 echo ""
