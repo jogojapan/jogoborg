@@ -24,6 +24,7 @@ migrate_working_dir/
 # The standard place for storing Borg keys used for testing.
 /local_test/borgspace/test/
 /local_test/test.borgkey
+/local_test/borgspace/**
 
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
