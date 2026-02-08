@@ -24,8 +24,13 @@ from scripts.backup_executor import BackupExecutor
 from scripts.init_gpg import encrypt_data, decrypt_data
 
 # Load the credentials from environment variables
-JOGOBORG_WEB_USERNAME = os.environ.get('JOGOBORG_WEB_USERNAME', 'admin')
-JOGOBORG_WEB_PASSWORD = os.environ.get('JOGOBORG_WEB_PASSWORD', '')
+# Strip whitespace and carriage returns from credentials
+JOGOBORG_WEB_USERNAME = os.environ.get('JOGOBORG_WEB_USERNAME', 'admin').strip()
+JOGOBORG_WEB_PASSWORD = os.environ.get('JOGOBORG_WEB_PASSWORD', '').strip()
+
+# Debug: Show raw environment variable details
+_raw_password = os.environ.get('JOGOBORG_WEB_PASSWORD', '')
+_raw_username = os.environ.get('JOGOBORG_WEB_USERNAME', '')
 
 
 from logging.handlers import RotatingFileHandler
@@ -233,13 +238,17 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
     def _handle_login(self, data):
         """Handle login requests."""
-        username = data.get('username')
-        password = data.get('password')
+        username = data.get('username', '').strip()
+        password = data.get('password', '').strip()
 
-        # Check against configured credentials
-        logger.debug(f"Checking user name '{username}', pw <hidden>.")
+        # Detailed debugging
+        logger.debug(f"=== LOGIN ATTEMPT ===")
+        logger.debug(f"Username match: {username == JOGOBORG_WEB_USERNAME}")
+        logger.debug(f"Password match: {password == JOGOBORG_WEB_PASSWORD}")
+        logger.debug(f"=== END LOGIN ATTEMPT ===")
+        
         if username == JOGOBORG_WEB_USERNAME and password == JOGOBORG_WEB_PASSWORD:
-            logger.debug("User name and password are correct.")
+            logger.info(f"Successful login for user: {username}")
             # Generate a token (in the future, we will use a proper JWT or session system)
             token = hashlib.sha256(f"{username}:{password}".encode()).hexdigest()
 
@@ -248,7 +257,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 'message': 'Login successful'
             })
         else:
-            logger.debug("User name or password incorrect.")
+            logger.warning(f"Failed login attempt for user: {username}")
             self._send_error(401, "Invalid credentials")
 
     def _set_cors_headers(self):
@@ -1071,7 +1080,7 @@ def run_server():
 
     # Check if password is set
     if not JOGOBORG_WEB_PASSWORD:
-        logger.warning("JOGOBORG_WEB_PASSWORD environment variable not set. Authentication will not work.")
+        logger.warning("JOGOBORG_WEB_PASSWORD environment variable not set or empty. Authentication will not work.")
 
     server = HTTPServer(('0.0.0.0', port), JogoborgHTTPHandler)
     logger.info(f"Starting Jogoborg web server on port {port}")

@@ -216,6 +216,28 @@ Backup jobs use cron syntax but are restricted to quarter-hour starts:
 - Database credentials, S3 keys, and SMTP passwords are encrypted at rest
 - Encryption key is derived from the `GPG_PASSPHRASE` environment variable
 
+### Environment Variable Escaping
+**Important:** When using special characters in passwords (especially `$`, `` ` ``, `\`), you must **quote them** to prevent shell expansion.
+
+**Example - DO NOT do this:**
+```yaml
+environment:
+  - JOGOBORG_WEB_PASSWORD=my$secure@pass  # Wrong! $secure will be expanded
+```
+
+**Example - DO THIS instead:**
+```yaml
+environment:
+  - JOGOBORG_WEB_PASSWORD='my$secure@pass'  # Correct! Single quotes prevent expansion
+```
+
+The same applies to `.env` files:
+```bash
+# .env file
+JOGOBORG_WEB_PASSWORD='my$ecure@Pass123'  # Use single quotes for special characters
+JOGOBORG_GPG_PASSPHRASE='my$encryption$key'
+```
+
 ### Repository Access
 - Borg repositories use encryption (repokey mode)
 - Default passphrase is 'changeme' - **change this in production**
