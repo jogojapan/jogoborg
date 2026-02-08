@@ -18,8 +18,9 @@ from scripts.init_gpg import decrypt_data
 
 class BackupScheduler:
     def __init__(self):
-        self.db_path = '/config/jogoborg.db'
-        self.log_dir = '/log'
+        config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+        self.db_path = os.path.join(config_dir, 'jogoborg.db')
+        self.log_dir = os.environ.get('JOGOBORG_LOG_DIR', '/log')
         self.running = True
         self.executor = BackupExecutor()
         self.notification_service = NotificationService()

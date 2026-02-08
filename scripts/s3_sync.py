@@ -9,7 +9,8 @@ from datetime import datetime
 class S3Syncer:
     def __init__(self):
         self.logger = logging.getLogger('S3Syncer')
-        self.rclone_config_dir = '/config/rclone'
+        config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+        self.rclone_config_dir = os.path.join(config_dir, 'rclone')
         
         # Ensure rclone config directory exists
         os.makedirs(self.rclone_config_dir, exist_ok=True)

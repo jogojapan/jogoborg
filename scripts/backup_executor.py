@@ -18,9 +18,10 @@ from scripts.notification_service import NotificationService
 
 class BackupExecutor:
     def __init__(self):
-        self.db_path = '/config/jogoborg.db'
-        self.log_dir = '/log'
-        self.borgspace_dir = '/borgspace'
+        config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+        self.db_path = os.path.join(config_dir, 'jogoborg.db')
+        self.log_dir = os.environ.get('JOGOBORG_LOG_DIR', '/log')
+        self.borgspace_dir = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
         self.db_dumper = DatabaseDumper()
         self.s3_syncer = S3Syncer()
         self.notification_service = NotificationService()

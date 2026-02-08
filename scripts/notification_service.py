@@ -18,7 +18,8 @@ from scripts.init_gpg import decrypt_data
 
 class NotificationService:
     def __init__(self):
-        self.db_path = '/config/jogoborg.db'
+        config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+        self.db_path = os.path.join(config_dir, 'jogoborg.db')
         self.logger = logging.getLogger('NotificationService')
 
     def send_notification(self, subject, message, is_error=False):

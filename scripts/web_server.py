@@ -27,13 +27,13 @@ JOGOBORG_WEB_PASSWORD = os.environ.get('JOGOBORG_WEB_PASSWORD', '')
 
 
 from logging.handlers import RotatingFileHandler
-log_dir = "/log"
+log_dir = os.environ.get('JOGOBORG_LOG_DIR', '/log')
 os.makedirs(log_dir, exist_ok=True)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
 handler = RotatingFileHandler(
-    "/log/web_server.log",
+    os.path.join(log_dir, 'web_server.log'),
     maxBytes    = 5 * 1024 * 1024,  # 5 MB
     backupCount = 3  # Keep up to 3 old log files
 )
@@ -45,7 +45,8 @@ logger.addHandler(handler)
 
 class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        self.db_path = '/config/jogoborg.db'
+        config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+        self.db_path = os.path.join(config_dir, 'jogoborg.db')
         self.notification_service = NotificationService()
         self.database_dumper = DatabaseDumper()
         self.s3_syncer = S3Syncer()
