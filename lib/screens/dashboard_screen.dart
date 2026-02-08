@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -29,7 +31,7 @@ class DashboardScreen extends StatelessWidget {
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: GridView.count(
-          crossAxisCount: 2,
+          crossAxisCount: _calculateCrossAxisCount(context),
           crossAxisSpacing: 16,
           mainAxisSpacing: 16,
           children: [
@@ -87,7 +89,7 @@ class _DashboardCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.cardBackground;
     final textColor = AppColors.primaryText;
-    
+
     return Card(
       color: backgroundColor,
       elevation: 4,
@@ -125,4 +127,18 @@ class _DashboardCard extends StatelessWidget {
       ),
     );
   }
+}
+
+int _calculateCrossAxisCount(BuildContext context) {
+  final screenWidth = MediaQuery.of(context).size.width;
+  // Minimum card width in logical pixels
+  const minCardWidth = 240.0;
+  // Padding and spacing
+  const horizontalPadding = 16.0 * 2; // left and right padding
+  const spacing = 16.0;
+
+  final availableWidth = screenWidth - horizontalPadding;
+  // Calculate how many cards fit
+  final count = max(1, (availableWidth / (minCardWidth + spacing)).floor());
+  return count;
 }
