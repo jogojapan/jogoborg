@@ -14,6 +14,7 @@ class ApiService extends ChangeNotifier {
   }
 
   Future<Map<String, dynamic>> get(String endpoint, {String? token}) async {
+    debugPrint('API GET: $baseUrl$endpoint, Token present: ${token != null}');
     final response = await http.get(
       Uri.parse('$baseUrl$endpoint'),
       headers: {
@@ -34,6 +35,7 @@ class ApiService extends ChangeNotifier {
     Map<String, dynamic> data, {
     String? token,
   }) async {
+    debugPrint('API POST: $baseUrl$endpoint, Token present: ${token != null}');
     final response = await http.post(
       Uri.parse('$baseUrl$endpoint'),
       headers: {

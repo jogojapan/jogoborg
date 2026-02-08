@@ -22,33 +22,39 @@ class _SourcesScreenState extends State<SourcesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadDirectory();
+    // Use post-frame callback to ensure context is available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadDirectory();
+    });
   }
 
   Future<void> _loadDirectory() async {
+    if (!mounted) return;
+
     setState(() => isLoading = true);
 
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
 
-      final response = await apiService.post(
-        '/sources/browse',
-        {'path': currentPath},
-        token: authService.token,
-      );
+      debugPrint('Loading directory with token: ${authService.token != null}');
 
-      setState(() {
-        items = List<Map<String, dynamic>>.from(response['items'] ?? []);
-        isLoading = false;
-      });
-    } catch (e) {
-      setState(() => isLoading = false);
+      final response = await apiService.post('/sources/browse', {
+        'path': currentPath,
+      }, token: authService.token);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load directory: $e')),
-        );
+        setState(() {
+          items = List<Map<String, dynamic>>.from(response['items'] ?? []);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to load directory: $e')));
       }
     }
   }
@@ -133,26 +139,26 @@ class _SourcesScreenState extends State<SourcesScreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : items.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Directory is empty',
-                          style: TextStyle(fontSize: 16),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: items.length,
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          return _FileListTile(
-                            item: item,
-                            onTap: () {
-                              if (item['is_directory'] == true) {
-                                _navigateToPath(item['path']);
-                              }
-                            },
-                          );
+                ? const Center(
+                    child: Text(
+                      'Directory is empty',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  )
+                : ListView.builder(
+                    itemCount: items.length,
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return _FileListTile(
+                        item: item,
+                        onTap: () {
+                          if (item['is_directory'] == true) {
+                            _navigateToPath(item['path']);
+                          }
                         },
-                      ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -164,10 +170,7 @@ class _FileListTile extends StatefulWidget {
   final Map<String, dynamic> item;
   final VoidCallback? onTap;
 
-  const _FileListTile({
-    required this.item,
-    this.onTap,
-  });
+  const _FileListTile({required this.item, this.onTap});
 
   @override
   State<_FileListTile> createState() => _FileListTileState();
@@ -186,11 +189,9 @@ class _FileListTileState extends State<_FileListTile> {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
 
-      final response = await apiService.post(
-        '/sources/size',
-        {'path': widget.item['path']},
-        token: authService.token,
-      );
+      final response = await apiService.post('/sources/size', {
+        'path': widget.item['path'],
+      }, token: authService.token);
 
       setState(() {
         calculatedSize = _formatBytes(response['size'] ?? 0);
@@ -238,8 +239,8 @@ class _FileListTileState extends State<_FileListTile> {
                     calculatedSize != null
                         ? 'Size: $calculatedSize'
                         : showingSize
-                            ? 'Calculating...'
-                            : 'Size: Click to calculate',
+                        ? 'Calculating...'
+                        : 'Size: Click to calculate',
                     style: const TextStyle(fontSize: 12),
                   ),
                   if (!showingSize && calculatedSize == null) ...[
@@ -258,9 +259,9 @@ class _FileListTileState extends State<_FileListTile> {
                 const Spacer(),
                 if (lastModified != null)
                   Text(
-                    DateFormat('yyyy-MM-dd HH:mm').format(
-                      DateTime.parse(lastModified),
-                    ),
+                    DateFormat(
+                      'yyyy-MM-dd HH:mm',
+                    ).format(DateTime.parse(lastModified)),
                     style: const TextStyle(fontSize: 12),
                   ),
               ],

@@ -11,18 +11,26 @@ import 'screens/sources_screen.dart';
 import 'screens/jobs_screen.dart';
 import 'screens/notifications_screen.dart';
 
-void main() {
-  runApp(const JogoborgApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Create and initialize AuthService with persisted token
+  final authService = AuthService();
+  await authService.initialize();
+
+  runApp(JogoborgApp(authService: authService));
 }
 
 class JogoborgApp extends StatelessWidget {
-  const JogoborgApp({super.key});
+  final AuthService authService;
+
+  const JogoborgApp({super.key, required this.authService});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider<AuthService>.value(value: authService),
         ChangeNotifierProvider(create: (_) => ApiService()),
         ChangeNotifierProvider(create: (_) => ThemeService()),
       ],
@@ -47,6 +55,7 @@ class JogoborgApp extends StatelessWidget {
   GoRouter _createRouter(AuthService authService) {
     return GoRouter(
       initialLocation: authService.isAuthenticated ? '/dashboard' : '/login',
+      refreshListenable: authService,
       redirect: (context, state) {
         final isAuthenticated = authService.isAuthenticated;
         final isLoginRoute = state.matchedLocation == '/login';

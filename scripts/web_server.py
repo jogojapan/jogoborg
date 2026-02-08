@@ -226,7 +226,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
         # For now, we'll regenerate the expected token each time. We
         # will store this in a database in the future.
-        expected_token = hashlib.sha256(f"admin:{JOGOBORG_WEB_PASSWORD}".encode()).hexdigest()
+        expected_token = hashlib.sha256(f"{JOGOBORG_WEB_USERNAME}:{JOGOBORG_WEB_PASSWORD}".encode()).hexdigest()
 
         return secrets.compare_digest(token, expected_token)
 
@@ -271,10 +271,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         self.wfile.write(json.dumps(response).encode())
 
     def _handle_get_repositories(self):
-        """Get list of repositories in /borgspace."""
+        """Get list of repositories in borgspace."""
         try:
             repositories = []
-            borgspace_path = '/borgspace'
+            borgspace_path = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
             
             if os.path.exists(borgspace_path):
                 for item in os.listdir(borgspace_path):
@@ -714,21 +714,43 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def _handle_browse_sources(self, data):
         """Browse source directory structure."""
         try:
-            path = data.get('path', '/sourcespace')
+            sourcespace_base = os.environ.get('JOGOBORG_SOURCESPACE_DIR', '/sourcespace')
+            requested_path = data.get('path', sourcespace_base)
             
-            if not path.startswith('/sourcespace'):
-                self._send_error(400, "Access denied: path must be within /sourcespace")
+            # If the requested path is the default '/sourcespace', use sourcespace_base instead
+            if requested_path == '/sourcespace':
+                requested_path = sourcespace_base
+            
+            # Normalize path and ensure it's within sourcespace
+            requested_path = os.path.normpath(requested_path)
+            sourcespace_base = os.path.normpath(sourcespace_base)
+            
+            # Convert to absolute path if needed
+            if not os.path.isabs(requested_path):
+                requested_path = os.path.join(sourcespace_base, requested_path.lstrip('/'))
+            
+            # Ensure the path is within sourcespace
+            try:
+                real_requested = os.path.realpath(requested_path)
+                real_sourcespace = os.path.realpath(sourcespace_base)
+                
+                # Allow the path if it's within sourcespace OR if it equals sourcespace
+                if not (real_requested.startswith(real_sourcespace) or real_requested == real_sourcespace):
+                    self._send_error(400, "Access denied: path must be within sourcespace")
+                    return
+            except (OSError, ValueError):
+                self._send_error(400, "Invalid path")
                 return
             
-            if not os.path.exists(path):
+            if not os.path.exists(requested_path):
                 self._send_error(404, "Path not found")
                 return
             
             items = []
             
             try:
-                for item_name in sorted(os.listdir(path)):
-                    item_path = os.path.join(path, item_name)
+                for item_name in sorted(os.listdir(requested_path)):
+                    item_path = os.path.join(requested_path, item_name)
                     
                     try:
                         stat_info = os.stat(item_path)
@@ -759,13 +781,39 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def _handle_calculate_size(self, data):
         """Calculate directory size recursively."""
         try:
-            path = data.get('path')
+            sourcespace_base = os.environ.get('JOGOBORG_SOURCESPACE_DIR', '/sourcespace')
+            requested_path = data.get('path')
             
-            if not path or not path.startswith('/sourcespace'):
+            if not requested_path:
+                self._send_error(400, "Path is required")
+                return
+            
+            # If the requested path is the default '/sourcespace', use sourcespace_base instead
+            if requested_path == '/sourcespace':
+                requested_path = sourcespace_base
+            
+            # Normalize path and ensure it's within sourcespace
+            requested_path = os.path.normpath(requested_path)
+            sourcespace_base = os.path.normpath(sourcespace_base)
+            
+            # Convert to absolute path if needed
+            if not os.path.isabs(requested_path):
+                requested_path = os.path.join(sourcespace_base, requested_path.lstrip('/'))
+            
+            # Ensure the path is within sourcespace
+            try:
+                real_requested = os.path.realpath(requested_path)
+                real_sourcespace = os.path.realpath(sourcespace_base)
+                
+                # Allow the path if it's within sourcespace OR if it equals sourcespace
+                if not (real_requested.startswith(real_sourcespace) or real_requested == real_sourcespace):
+                    self._send_error(400, "Access denied: path must be within sourcespace")
+                    return
+            except (OSError, ValueError):
                 self._send_error(400, "Invalid path")
                 return
             
-            if not os.path.exists(path):
+            if not os.path.exists(requested_path):
                 self._send_error(404, "Path not found")
                 return
             
@@ -787,7 +835,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 return total_size
             
             # Run size calculation in a thread to avoid blocking
-            size = get_size(path)
+            size = get_size(requested_path)
             self._send_json_response({'size': size})
             
         except Exception as e:

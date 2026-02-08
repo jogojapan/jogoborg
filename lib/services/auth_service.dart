@@ -2,11 +2,14 @@ import 'dart:js_interop';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 @JS('JOGOBORG_URL')
 external String? get jogoboruUrl;
 
 class AuthService extends ChangeNotifier {
+  static const String _tokenKey = 'auth_token';
+
   static String get baseUrl {
     try {
       final url = jogoboruUrl;
@@ -25,9 +28,28 @@ class AuthService extends ChangeNotifier {
 
   String? _token;
   bool _isAuthenticated = false;
+  bool _isInitialized = false;
 
   bool get isAuthenticated => _isAuthenticated;
   String? get token => _token;
+  bool get isInitialized => _isInitialized;
+
+  // Initialize auth service by loading saved token
+  Future<void> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _token = prefs.getString(_tokenKey);
+      _isAuthenticated = _token != null && _token!.isNotEmpty;
+      _isInitialized = true;
+      debugPrint(
+          'AuthService initialized. Token loaded: ${_token != null}, Length: ${_token?.length ?? 0}');
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error initializing AuthService: $e');
+      _isInitialized = true;
+      notifyListeners();
+    }
+  }
 
   // Method to login
   Future<bool> login(String username, String password) async {
@@ -46,6 +68,15 @@ class AuthService extends ChangeNotifier {
         final data = json.decode(response.body);
         _token = data['token'];
         _isAuthenticated = true;
+
+        // Persist token to localStorage
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_tokenKey, _token!);
+        } catch (e) {
+          debugPrint('Error saving token: $e');
+        }
+
         notifyListeners();
         return true;
       } else {
@@ -74,6 +105,15 @@ class AuthService extends ChangeNotifier {
 
     _token = null;
     _isAuthenticated = false;
+
+    // Clear token from localStorage
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_tokenKey);
+    } catch (e) {
+      debugPrint('Error clearing token: $e');
+    }
+
     notifyListeners();
   }
 
