@@ -14,7 +14,8 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _smtpFormKey = GlobalKey<FormState>();
+  final _webhookFormKey = GlobalKey<FormState>();
 
   // SMTP settings
   final _smtpHostController = TextEditingController();
@@ -32,7 +33,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   String _errorPriority = 'high';
 
   bool isLoading = true;
-  bool isSaving = false;
+  bool isSavingSMTP = false;
+  bool isSavingWebhook = false;
 
   @override
   void initState() {
@@ -93,10 +95,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Future<void> _saveSettings() async {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _saveSMTPSettings() async {
+    if (!_smtpFormKey.currentState!.validate()) return;
 
-    setState(() => isSaving = true);
+    setState(() => isSavingSMTP = true);
 
     try {
       final apiService = context.read<ApiService>();
@@ -112,6 +114,39 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           'recipient_email': _smtpRecipientEmailController.text,
           'security': _smtpSecurity,
         },
+      };
+
+      await apiService.put('/notifications', settings,
+          token: authService.token);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('SMTP settings saved successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save SMTP settings: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isSavingSMTP = false);
+      }
+    }
+  }
+
+  Future<void> _saveWebhookSettings() async {
+    if (!_webhookFormKey.currentState!.validate()) return;
+
+    setState(() => isSavingWebhook = true);
+
+    try {
+      final apiService = context.read<ApiService>();
+      final authService = context.read<AuthService>();
+
+      final settings = {
         'webhook_config': {
           'url': _webhookUrlController.text,
           'token': _webhookTokenController.text,
@@ -125,19 +160,18 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Notification settings saved successfully')),
+          const SnackBar(content: Text('Webhook settings saved successfully')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to save settings: $e')),
+          SnackBar(content: Text('Failed to save webhook settings: $e')),
         );
       }
     } finally {
       if (mounted) {
-        setState(() => isSaving = false);
+        setState(() => isSavingWebhook = false);
       }
     }
   }
@@ -223,24 +257,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Scaffold(
       appBar: JogoborgAppBar(
         title: 'Notification Settings',
-        additionalActions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: 'Save Settings',
-            onPressed: isSaving ? null : _saveSettings,
-          ),
-        ],
       ),
       drawer: const AppDrawer(),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  // SMTP Configuration
-                  Card(
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // SMTP Configuration
+                Form(
+                  key: _smtpFormKey,
+                  child: Card(
                     color: AppColors.cardBackground,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -263,6 +290,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               ElevatedButton(
                                 onPressed: _testSmtp,
                                 child: const Text('Test'),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed:
+                                    isSavingSMTP ? null : _saveSMTPSettings,
+                                child: isSavingSMTP
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text('Save'),
                               ),
                             ],
                           ),
@@ -421,11 +462,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                     ),
                   ),
+                ),
 
-                  const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-                  // Webhook Configuration
-                  Card(
+                // Webhook Configuration
+                Form(
+                  key: _webhookFormKey,
+                  child: Card(
                     color: AppColors.cardBackground,
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -448,6 +492,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               ElevatedButton(
                                 onPressed: _testWebhook,
                                 child: const Text('Test'),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: isSavingWebhook
+                                    ? null
+                                    : _saveWebhookSettings,
+                                child: isSavingWebhook
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Text('Save'),
                               ),
                             ],
                           ),
@@ -535,22 +594,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       ),
                     ),
                   ),
+                ),
 
-                  const SizedBox(height: 24),
-
-                  // Save button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: isSaving ? null : _saveSettings,
-                      child: isSaving
-                          ? const CircularProgressIndicator()
-                          : const Text('Save Settings'),
-                    ),
-                  ),
-                ],
-              ),
+                const SizedBox(height: 24),
+              ],
             ),
     );
   }
