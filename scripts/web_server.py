@@ -12,6 +12,7 @@ import subprocess
 import threading
 import hashlib
 import secrets
+from croniter import croniter
 
 # Add project root to Python path
 sys.path.append('/app')
@@ -452,6 +453,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     self._send_error(400, f"Missing required field: {field}")
                     return
             
+            # Validate cron schedule
+            if not self._validate_cron_schedule(data['schedule']):
+                self._send_error(400, f"Invalid cron schedule: {data['schedule']}. Must be a valid 5-field cron expression (minute hour day month day_of_week)")
+                return
+            
             logger.debug(f"Creating job: {data.get('name')}, has passphrase: {bool(data.get('repository_passphrase'))}")
             
             conn = sqlite3.connect(self.db_path)
@@ -517,6 +523,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def _handle_update_job(self, job_id, data):
         """Update an existing backup job."""
         try:
+            # Validate cron schedule if provided
+            if data.get('schedule') and not self._validate_cron_schedule(data['schedule']):
+                self._send_error(400, f"Invalid cron schedule: {data['schedule']}. Must be a valid 5-field cron expression (minute hour day month day_of_week)")
+                return
+            
             logger.debug(f"Updating job {job_id}: {data.get('name')}, has passphrase: {bool(data.get('repository_passphrase'))}")
             
             conn = sqlite3.connect(self.db_path)
@@ -1030,6 +1041,15 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         
         response_json = json.dumps(data, indent=2)
         self.wfile.write(response_json.encode())
+
+    def _validate_cron_schedule(self, schedule):
+        """Validate that schedule is a valid cron expression."""
+        try:
+            # Try to create a croniter object - if it works, it's valid
+            croniter(schedule, datetime.now())
+            return True
+        except Exception:
+            return False
 
     def _send_error(self, status_code, message):
         """Send error response."""

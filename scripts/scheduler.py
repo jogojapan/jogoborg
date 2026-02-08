@@ -111,129 +111,108 @@ class BackupScheduler:
     def should_run_job(self, schedule, current_time, job_id):
         """Check if a job should run based on its schedule."""
         try:
-            # Only accept schedules that start at quarter hours (0, 15, 30, 45 minutes)
+            # Create croniter object  
             cron = croniter(schedule, current_time)
             
-            # Get the last time this job should have run
-            last_run_time = cron.get_prev(datetime)
+            # Get the next scheduled time
+            next_run_time = cron.get_next(datetime)
             
-            # Check if we've already run this job at this time
+            # Get the previous scheduled time
+            prev_run_time = cron.get_prev(datetime)
+            
+            # Check if current_time is within one minute AFTER a scheduled time
+            # (accounts for the fact that we check every 30 seconds)
+            time_since_last_schedule = (current_time - prev_run_time).total_seconds()
+            
+            # If more than 61 seconds have passed since the last scheduled time,
+            # the current time is NOT the scheduled time window - don't run
+            if time_since_last_schedule > 61:
+                return False
+            
+            # Now check if we've already run this job at this scheduled time
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            cursor.execute('''
-            SELECT COUNT(*) FROM job_logs 
-            WHERE job_id = ? AND started_at >= ? AND started_at < ?
-            ''', (job_id, last_run_time, current_time))
-            
-            count = cursor.fetchone()[0]
-            conn.close()
-            
-            # Return True if we haven't run this job at this scheduled time yet
-            return count == 0
+            try:
+                cursor.execute('''
+                SELECT COUNT(*) FROM job_logs 
+                WHERE job_id = ? AND started_at >= ? AND started_at < ?
+                ''', (job_id, prev_run_time.isoformat(), current_time.isoformat()))
+                
+                count = cursor.fetchone()[0]
+                
+                # Return True if we haven't run this job at this scheduled time yet
+                return count == 0
+                
+            finally:
+                conn.close()
             
         except Exception as e:
             self.logger.error(f"Error checking job schedule: {e}")
             return False
 
     def validate_schedule(self, schedule):
-        """Validate that schedule only allows quarter-hour starts."""
+        """Validate that schedule is a valid cron expression."""
         try:
             # Parse the cron expression
             parts = schedule.strip().split()
             if len(parts) != 5:
                 return False
             
-            minute_part = parts[0]
-            
-            # Check if minute is one of: 0, 15, 30, 45, or */15
-            valid_minutes = ['0', '15', '30', '45', '*/15']
-            
-            if minute_part in valid_minutes:
-                return True
-            
-            # Check for comma-separated values
-            if ',' in minute_part:
-                minutes = minute_part.split(',')
-                return all(m.strip() in ['0', '15', '30', '45'] for m in minutes)
-            
-            return False
+            # Try to create a croniter object - if it works, it's valid
+            croniter(schedule, datetime.now())
+            return True
             
         except Exception:
             return False
 
-    def get_next_quarter_hour(self, current_time):
-        """Get the next quarter hour (0, 15, 30, or 45 minutes)."""
-        minute = current_time.minute
-        
-        if minute < 15:
-            next_minute = 15
-        elif minute < 30:
-            next_minute = 30
-        elif minute < 45:
-            next_minute = 45
-        else:
-            next_minute = 0
-            current_time = current_time + timedelta(hours=1)
-        
-        return current_time.replace(minute=next_minute, second=0, microsecond=0)
-
     def run(self):
         """Main scheduler loop."""
         self.logger.info("Backup scheduler started")
+        last_checked_minute = None
         
         while self.running:
             try:
                 current_time = datetime.now()
+                current_minute = current_time.replace(second=0, microsecond=0)
                 
-                # Round to the current quarter hour
-                if current_time.minute not in [0, 15, 30, 45]:
-                    # Sleep until next quarter hour
-                    next_quarter = self.get_next_quarter_hour(current_time)
-                    sleep_seconds = (next_quarter - current_time).total_seconds()
-                    self.logger.info(f"Sleeping for {sleep_seconds} seconds until next quarter hour")
-                    time.sleep(sleep_seconds)
-                    continue
-                
-                # Get jobs that should run now
-                pending_jobs = self.get_pending_jobs(current_time)
-                
-                if pending_jobs:
-                    self.logger.info(f"Found {len(pending_jobs)} pending jobs")
+                # Check if we've already checked this minute (avoid duplicate checks)
+                if last_checked_minute != current_minute:
+                    last_checked_minute = current_minute
                     
-                    # Run jobs sequentially
-                    for job in pending_jobs:
-                        if not self.running:
-                            break
+                    # Get jobs that should run now
+                    pending_jobs = self.get_pending_jobs(current_time)
+                    
+                    if pending_jobs:
+                        self.logger.info(f"Found {len(pending_jobs)} pending jobs at {current_time.strftime('%H:%M')}")
                         
-                        self.logger.info(f"Starting backup job: {job['name']}")
-                        
-                        try:
-                            # Execute the backup job
-                            self.executor.execute_job(job)
-                            self.logger.info(f"Completed backup job: {job['name']}")
-                        except Exception as e:
-                            self.logger.error(f"Failed to execute job {job['name']}: {e}")
+                        # Run jobs sequentially
+                        for job in pending_jobs:
+                            if not self.running:
+                                break
                             
-                            # Send failure notification
+                            self.logger.info(f"Starting backup job: {job['name']}")
+                            
                             try:
-                                self.notification_service.send_notification(
-                                    subject=f"Backup job failed: {job['name']}",
-                                    message=f"Job {job['name']} failed with error: {str(e)}",
-                                    is_error=True
-                                )
-                            except Exception as notify_error:
-                                self.logger.error(f"Failed to send notification: {notify_error}")
+                                # Execute the backup job
+                                self.executor.execute_job(job)
+                                self.logger.info(f"Completed backup job: {job['name']}")
+                            except Exception as e:
+                                self.logger.error(f"Failed to execute job {job['name']}: {e}")
+                                
+                                # Send failure notification
+                                try:
+                                    self.notification_service.send_notification(
+                                        subject=f"Backup job failed: {job['name']}",
+                                        message=f"Job {job['name']} failed with error: {str(e)}",
+                                        is_error=True
+                                    )
+                                except Exception as notify_error:
+                                    self.logger.error(f"Failed to send notification: {notify_error}")
                 
-                # Sleep for the remainder of the current minute
-                next_quarter = self.get_next_quarter_hour(current_time)
-                if next_quarter <= current_time:
-                    next_quarter = self.get_next_quarter_hour(current_time + timedelta(minutes=15))
-                
-                sleep_seconds = (next_quarter - datetime.now()).total_seconds()
-                if sleep_seconds > 0:
-                    self.logger.debug(f"Sleeping for {sleep_seconds} seconds until next check")
-                    time.sleep(min(sleep_seconds, 60))  # Check at least every minute
+                # Sleep for a bit before checking again
+                # We check every 30 seconds to be responsive to minute boundaries
+                time.sleep(30)
                 
             except Exception as e:
                 self.logger.error(f"Scheduler error: {e}")
