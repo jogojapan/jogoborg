@@ -212,6 +212,7 @@ class _JobsScreenState extends State<JobsScreen> {
                     itemBuilder: (context, index) {
                       final job = jobs[index];
                       return _JobCard(
+                        key: ValueKey(job['id']),
                         job: job,
                         onEdit: () => _editJob(job),
                         onDelete: () => _deleteJob(job),
