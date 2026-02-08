@@ -90,6 +90,27 @@ cd local_test
 
 If no Flutter build is found, the server falls back to a development API testing interface at `index-dev.html`.
 
+### Borg Repo
+
+For testing, you'll need a Borg repository in the local_test/borgspace directory.
+Make sure you have "borg" installed on your system. Then, initialize the repo:
+
+```bash
+cd local_test
+borg init --encryption=repokey borgspace/test
+```
+
+You'll need to enter a passphrase, which you should store in a safe place.
+Once the repo has been created, make sure you also store the key in a safe place:
+
+```bash
+borg key export borgspace/test test.borgkey
+```
+
+This will store the key in binary format in a file named `test.borgkey'. The standard
+.gitignore is set up to ignore a Borg repo named "test" and that key file.
+
+
 ### Initial Setup
 
 ```bash

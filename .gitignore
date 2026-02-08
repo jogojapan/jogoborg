@@ -21,6 +21,10 @@ migrate_working_dir/
 # is commented out by default.
 .vscode/
 
+# The standard place for storing Borg keys used for testing.
+/local_test/borgspace/test/
+/local_test/test.borgkey
+
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
 /pubspec.lock

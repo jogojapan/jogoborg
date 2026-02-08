@@ -2,13 +2,7 @@
 
 ## Why Use a Virtual Environment?
 
-A Python virtual environment isolates your project's dependencies from your system Python installation. This is a best practice for several reasons:
-
-- ✅ **Dependency Isolation**: Jogoborg's dependencies don't conflict with other projects
-- ✅ **Clean System**: Keeps your system Python clean and unmodified
-- ✅ **Reproducibility**: Same environment across different machines
-- ✅ **Easy Cleanup**: Delete the venv directory to remove all dependencies
-- ✅ **Multiple Projects**: Run different Python projects with different dependency versions
+Use a local Python environment for testing. This will give you isolation from your standard environment and resolve dependencies.
 
 ## Quick Setup
 
