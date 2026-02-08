@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/color_config.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/jogoborg_app_bar.dart';
 
 class ReposScreen extends StatefulWidget {
   const ReposScreen({super.key});
@@ -27,18 +27,20 @@ class _ReposScreenState extends State<ReposScreen> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
-      final response = await apiService.get('/repositories', token: authService.token);
-      
+
+      final response =
+          await apiService.get('/repositories', token: authService.token);
+
       setState(() {
-        repositories = List<Map<String, dynamic>>.from(response['repositories'] ?? []);
+        repositories =
+            List<Map<String, dynamic>>.from(response['repositories'] ?? []);
         isLoading = false;
       });
     } catch (e) {
       setState(() {
         isLoading = false;
       });
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to load repositories: $e')),
@@ -50,24 +52,15 @@ class _ReposScreenState extends State<ReposScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Borg Repositories'),
-        actions: [
+      appBar: JogoborgAppBar(
+        title: 'Borg Repositories',
+        additionalActions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: () {
               setState(() => isLoading = true);
               _loadRepositories();
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await context.read<AuthService>().logout();
-              if (context.mounted) {
-                context.go('/login');
-              }
             },
           ),
         ],
@@ -79,13 +72,15 @@ class _ReposScreenState extends State<ReposScreen> {
               ? Center(
                   child: Text(
                     'No repositories found in /borgspace',
-                    style: TextStyle(fontSize: 16, color: AppColors.secondaryText),
+                    style:
+                        TextStyle(fontSize: 16, color: AppColors.secondaryText),
                   ),
                 )
               : Padding(
                   padding: const EdgeInsets.all(16),
                   child: GridView.builder(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 3,
                       crossAxisSpacing: 16,
                       mainAxisSpacing: 16,
@@ -126,7 +121,7 @@ class _RepositoryCard extends StatelessWidget {
     final backgroundColor = AppColors.cardBackground;
     final textColor = AppColors.primaryText;
     final mutedTextColor = AppColors.secondaryText;
-    
+
     return Card(
       color: backgroundColor,
       elevation: 4,
@@ -216,13 +211,13 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
     try {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
-      
+
       final response = await apiService.post(
         '/repositories/${widget.repository['id']}/unlock',
         {'encryption_key': _encryptionKeyController.text},
         token: authService.token,
       );
-      
+
       setState(() {
         archives = List<Map<String, dynamic>>.from(response['archives'] ?? []);
         isUnlocked = true;
@@ -230,7 +225,7 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
       });
     } catch (e) {
       setState(() => isLoadingArchives = false);
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to unlock repository: $e')),
@@ -243,19 +238,20 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
     final textColor = AppColors.primaryText;
-    
+
     return AlertDialog(
       backgroundColor: backgroundColor,
-      title: Text('Repository: ${widget.repository['name']}', style: TextStyle(color: textColor)),
+      title: Text('Repository: ${widget.repository['name']}',
+          style: TextStyle(color: textColor)),
       content: SizedBox(
         width: 600,
         height: 500,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Path: ${widget.repository['path']}', style: TextStyle(color: textColor)),
+            Text('Path: ${widget.repository['path']}',
+                style: TextStyle(color: textColor)),
             const SizedBox(height: 16),
-            
             if (!isUnlocked) ...[
               Text(
                 'Encryption Key for ${widget.repository['path']}:',
@@ -278,7 +274,6 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
                 onSubmitted: (_) => _unlockRepository(),
               ),
               const SizedBox(height: 16),
-              
               if (isLoadingArchives)
                 const Center(child: CircularProgressIndicator()),
             ] else ...[
@@ -287,10 +282,11 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
                 style: TextStyle(fontWeight: FontWeight.bold, color: textColor),
               ),
               const SizedBox(height: 8),
-              
               Expanded(
                 child: archives.isEmpty
-                    ? Center(child: Text('No archives found', style: TextStyle(color: textColor)))
+                    ? Center(
+                        child: Text('No archives found',
+                            style: TextStyle(color: textColor)))
                     : ListView.builder(
                         itemCount: archives.length,
                         itemBuilder: (context, index) {
@@ -298,16 +294,26 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
                           return Card(
                             color: AppColors.cardBackground,
                             child: ListTile(
-                              leading: Icon(Icons.archive, color: AppColors.selectedBlue),
-                              title: Text(archive['name'] ?? 'Unknown', style: TextStyle(color: textColor)),
+                              leading: Icon(Icons.archive,
+                                  color: AppColors.selectedBlue),
+                              title: Text(archive['name'] ?? 'Unknown',
+                                  style: TextStyle(color: textColor)),
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Created: ${archive['created_at'] ?? 'Unknown'}', style: TextStyle(color: AppColors.secondaryText)),
+                                  Text(
+                                      'Created: ${archive['created_at'] ?? 'Unknown'}',
+                                      style: TextStyle(
+                                          color: AppColors.secondaryText)),
                                   if (archive['size'] != null)
-                                    Text('Size: ${_formatBytes(archive['size'])}', style: TextStyle(color: AppColors.secondaryText)),
+                                    Text(
+                                        'Size: ${_formatBytes(archive['size'])}',
+                                        style: TextStyle(
+                                            color: AppColors.secondaryText)),
                                   if (archive['files_count'] != null)
-                                    Text('Files: ${archive['files_count']}', style: TextStyle(color: AppColors.secondaryText)),
+                                    Text('Files: ${archive['files_count']}',
+                                        style: TextStyle(
+                                            color: AppColors.secondaryText)),
                                 ],
                               ),
                               isThreeLine: true,
@@ -333,12 +339,12 @@ class _RepositoryDialogState extends State<_RepositoryDialog> {
     const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
     int i = 0;
     double size = bytes.toDouble();
-    
+
     while (size >= 1024 && i < suffixes.length - 1) {
       size /= 1024;
       i++;
     }
-    
+
     return '${size.toStringAsFixed(1)} ${suffixes[i]}';
   }
 }

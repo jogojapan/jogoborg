@@ -2,10 +2,9 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
-import '../services/auth_service.dart';
 import '../services/color_config.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/jogoborg_app_bar.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -13,19 +12,9 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Jogoborg Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await context.read<AuthService>().logout();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
-          ),
-        ],
+      appBar: const JogoborgAppBar(
+        title: 'Jogoborg Dashboard',
+        showBackButton: false,
       ),
       drawer: const AppDrawer(),
       body: Padding(
@@ -40,28 +29,28 @@ class DashboardScreen extends StatelessWidget {
               subtitle: 'View and manage backup repositories',
               icon: Icons.storage,
               color: Colors.blue,
-              onTap: () => context.go('/repos'),
+              onTap: () => context.push('/repos'),
             ),
             _DashboardCard(
               title: 'Source Directories',
               subtitle: 'Browse source file tree',
               icon: Icons.folder,
               color: Colors.green,
-              onTap: () => context.go('/sources'),
+              onTap: () => context.push('/sources'),
             ),
             _DashboardCard(
               title: 'Backup Jobs',
               subtitle: 'Configure and monitor backup jobs',
               icon: Icons.backup,
               color: Colors.orange,
-              onTap: () => context.go('/jobs'),
+              onTap: () => context.push('/jobs'),
             ),
             _DashboardCard(
               title: 'Notifications',
               subtitle: 'Setup SMTP and webhook notifications',
               icon: Icons.notifications,
               color: Colors.purple,
-              onTap: () => context.go('/notifications'),
+              onTap: () => context.push('/notifications'),
             ),
           ],
         ),

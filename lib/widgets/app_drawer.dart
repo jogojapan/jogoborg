@@ -59,25 +59,25 @@ class AppDrawer extends StatelessWidget {
                   icon: Icons.storage,
                   title: 'Repositories',
                   selected: currentLocation == '/repos',
-                  onTap: () => context.go('/repos'),
+                  onTap: () => context.push('/repos'),
                 ),
                 _DrawerItem(
                   icon: Icons.folder,
                   title: 'Source Directories',
                   selected: currentLocation == '/sources',
-                  onTap: () => context.go('/sources'),
+                  onTap: () => context.push('/sources'),
                 ),
                 _DrawerItem(
                   icon: Icons.backup,
                   title: 'Backup Jobs',
                   selected: currentLocation == '/jobs',
-                  onTap: () => context.go('/jobs'),
+                  onTap: () => context.push('/jobs'),
                 ),
                 _DrawerItem(
                   icon: Icons.notifications,
                   title: 'Notifications',
                   selected: currentLocation == '/notifications',
-                  onTap: () => context.go('/notifications'),
+                  onTap: () => context.push('/notifications'),
                 ),
               ],
             ),
@@ -117,7 +117,7 @@ class _DrawerItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final textColor = AppColors.primaryText;
     final selectedColor = AppColors.selectedBlue;
-    
+
     return ListTile(
       leading: Icon(
         icon,

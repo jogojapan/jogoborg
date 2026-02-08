@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:go_router/go_router.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import '../services/color_config.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/jogoborg_app_bar.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -221,22 +221,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final textColor = AppColors.primaryText;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notification Settings'),
-        actions: [
+      appBar: JogoborgAppBar(
+        title: 'Notification Settings',
+        additionalActions: [
           IconButton(
             icon: const Icon(Icons.save),
             tooltip: 'Save Settings',
             onPressed: isSaving ? null : _saveSettings,
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await context.read<AuthService>().logout();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
           ),
         ],
       ),
