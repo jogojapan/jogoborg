@@ -22,7 +22,8 @@ from scripts.s3_sync import S3Syncer
 from scripts.backup_executor import BackupExecutor
 from scripts.init_gpg import encrypt_data, decrypt_data
 
-# Load the password from environment variable
+# Load the credentials from environment variables
+JOGOBORG_WEB_USERNAME = os.environ.get('JOGOBORG_WEB_USERNAME', 'admin')
 JOGOBORG_WEB_PASSWORD = os.environ.get('JOGOBORG_WEB_PASSWORD', '')
 
 
@@ -234,9 +235,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         username = data.get('username')
         password = data.get('password')
 
-        # Hardcoded "admin" user is the only possible user
+        # Check against configured credentials
         logger.debug(f"Checking user name '{username}', pw <hidden>.")
-        if username == 'admin' and password == JOGOBORG_WEB_PASSWORD:
+        if username == JOGOBORG_WEB_USERNAME and password == JOGOBORG_WEB_PASSWORD:
             logger.debug("User name and password are correct.")
             # Generate a token (in the future, we will use a proper JWT or session system)
             token = hashlib.sha256(f"{username}:{password}".encode()).hexdigest()
