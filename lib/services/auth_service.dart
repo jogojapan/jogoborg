@@ -1,13 +1,15 @@
-import 'package:js/js_util.dart' as js_util;
+import 'dart:js_interop';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+@JS('JOGOBORG_URL')
+external String? get jogoboruUrl;
+
 class AuthService extends ChangeNotifier {
   static String get baseUrl {
     try {
-      final url =
-          js_util.getProperty(js_util.globalThis, 'JOGOBORG_URL') as String?;
+      final url = jogoboruUrl;
       if (url != null && url.isNotEmpty) {
         return url;
       } else {
