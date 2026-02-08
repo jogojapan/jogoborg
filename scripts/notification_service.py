@@ -196,8 +196,8 @@ This notification was sent by Jogoborg backup system.
         priority = error_priority if is_error else success_priority
         priority_map = {
             'low': 1,
-            'normal': 5,
-            'high': 10
+            'normal': 3,
+            'high': 8
         }
         priority_num = priority_map.get(priority, 5)
         
