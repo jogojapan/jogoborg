@@ -232,11 +232,12 @@ class _JobCard extends StatelessWidget {
   final VoidCallback onTrigger;
 
   const _JobCard({
+    Key? key,
     required this.job,
     required this.onEdit,
     required this.onDelete,
     required this.onTrigger,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
