@@ -452,6 +452,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     self._send_error(400, f"Missing required field: {field}")
                     return
             
+            logger.debug(f"Creating job: {data.get('name')}, has passphrase: {bool(data.get('repository_passphrase'))}")
+            
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -471,6 +473,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 
                 if data.get('repository_passphrase'):
                     repository_passphrase_encrypted = encrypt_data(data['repository_passphrase'])
+                    logger.debug(f"Encrypted passphrase: {repository_passphrase_encrypted is not None}")
+                else:
+                    logger.warning(f"No repository_passphrase in request data for job {data.get('name')}")
                 
                 cursor.execute('''
                 INSERT INTO backup_jobs (
@@ -512,6 +517,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def _handle_update_job(self, job_id, data):
         """Update an existing backup job."""
         try:
+            logger.debug(f"Updating job {job_id}: {data.get('name')}, has passphrase: {bool(data.get('repository_passphrase'))}")
+            
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
@@ -531,6 +538,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 
                 if data.get('repository_passphrase'):
                     repository_passphrase_encrypted = encrypt_data(data['repository_passphrase'])
+                    logger.debug(f"Encrypted passphrase for update: {repository_passphrase_encrypted is not None}")
+                else:
+                    logger.warning(f"No repository_passphrase in update request for job {job_id}")
                 
                 cursor.execute('''
                 UPDATE backup_jobs SET
@@ -611,6 +621,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 columns = [desc[0] for desc in cursor.description]
                 job = dict(zip(columns, row))
                 
+                logger.debug(f"Job loaded from DB: {job['name']}, has passphrase: {job.get('repository_passphrase') is not None}")
+                
                 # Decrypt encrypted fields if they exist
                 if job['s3_config']:
                     try:
@@ -626,10 +638,15 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 
                 if job['repository_passphrase']:
                     try:
-                        job['repository_passphrase'] = decrypt_data(job['repository_passphrase'])
-                    except Exception:
+                        decrypted = decrypt_data(job['repository_passphrase'])
+                        logger.debug(f"Passphrase decrypted successfully: {decrypted is not None}")
+                        job['repository_passphrase'] = decrypted
+                    except Exception as e:
+                        logger.error(f"Failed to decrypt repository passphrase: {e}")
                         self._send_error(500, "Failed to decrypt repository passphrase")
                         return
+                else:
+                    logger.warning(f"Job {job['name']} has no repository_passphrase in database")
                 
                 # Convert source_directories from JSON string to list if needed
                 if isinstance(job['source_directories'], str):

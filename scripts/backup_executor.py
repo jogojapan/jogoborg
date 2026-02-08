@@ -17,11 +17,19 @@ from scripts.notification_service import NotificationService
 
 
 class BackupExecutor:
-    def __init__(self):
-        config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
+    def __init__(self, env_overrides=None):
+        # Support environment variable overrides for local testing
+        self.env_overrides = env_overrides or {}
+        
+        # Get environment variables with fallbacks
+        config_dir = self._get_env('JOGOBORG_CONFIG_DIR', '/config')
         self.db_path = os.path.join(config_dir, 'jogoborg.db')
-        self.log_dir = os.environ.get('JOGOBORG_LOG_DIR', '/log')
-        self.borgspace_dir = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
+        self.log_dir = self._get_env('JOGOBORG_LOG_DIR', '/log')
+        self.borgspace_dir = self._get_env('JOGOBORG_BORGSPACE_DIR', '/borgspace')
+        
+        # Validate that required paths exist or can be created
+        self._validate_paths()
+        
         self.db_dumper = DatabaseDumper()
         self.s3_syncer = S3Syncer()
         self.notification_service = NotificationService()
@@ -33,6 +41,55 @@ class BackupExecutor:
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         self.logger = logging.getLogger('BackupExecutor')
+        
+        # Log environment configuration for debugging
+        self._log_config()
+
+    def _get_env(self, key, default=None):
+        """Get environment variable with override support for testing."""
+        # Check overrides first (for local testing)
+        if key in self.env_overrides:
+            return self.env_overrides[key]
+        # Then check actual environment
+        return os.environ.get(key, default)
+
+    def _validate_paths(self):
+        """Validate that required directories exist or can be created."""
+        try:
+            os.makedirs(self.log_dir, exist_ok=True)
+            os.makedirs(self.borgspace_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        except Exception as e:
+            raise Exception(f"Failed to validate/create required directories: {e}")
+
+    def _log_config(self):
+        """Log configuration for debugging (excluding sensitive data)."""
+        self.logger.info(f"BackupExecutor initialized with:")
+        self.logger.info(f"  Config directory: {self._get_env('JOGOBORG_CONFIG_DIR', '/config')}")
+        self.logger.info(f"  Log directory: {self._get_env('JOGOBORG_LOG_DIR', '/log')}")
+        self.logger.info(f"  Borgspace directory: {self._get_env('JOGOBORG_BORGSPACE_DIR', '/borgspace')}")
+        self.logger.debug(f"  Database path: {self.db_path}")
+        
+        # Log which environment variables are being used
+        debug_mode = self._get_env('JOGOBORG_DEBUG', 'false').lower() == 'true'
+        if debug_mode:
+            self.logger.debug("Debug mode enabled - environment details:")
+            for key in ['JOGOBORG_CONFIG_DIR', 'JOGOBORG_LOG_DIR', 'JOGOBORG_BORGSPACE_DIR']:
+                value = self._get_env(key, '<not set>')
+                self.logger.debug(f"  {key}: {value}")
+
+    def _get_borg_env(self, passphrase):
+        """Get environment dict with BORG_PASSPHRASE set."""
+        env = dict(os.environ)
+        
+        # Apply any test overrides to subprocess environment
+        for key, value in self.env_overrides.items():
+            if not key.startswith('JOGOBORG_'):
+                env[key] = value
+        
+        if passphrase:
+            env['BORG_PASSPHRASE'] = passphrase
+        return env
 
     def execute_job(self, job):
         """Execute a complete backup job."""
@@ -43,6 +100,13 @@ class BackupExecutor:
         # Create job-specific logger
         job_logger = self._setup_job_logger(job_name)
         job_logger.info(f"Starting backup job: {job_name}")
+        
+        # Validate job configuration
+        try:
+            self._validate_job_config(job, job_logger)
+        except Exception as e:
+            job_logger.error(f"Invalid job configuration: {e}")
+            raise
         
         # Initialize log entry
         log_entry_id = self._create_log_entry(job_id, started_at)
@@ -147,18 +211,76 @@ class BackupExecutor:
             
             raise
 
+    def _validate_job_config(self, job, logger):
+        """Validate that a job configuration has all required fields."""
+        required_fields = {
+            'id': int,
+            'name': str,
+            'compression': str,
+            'source_directories': list,
+            'keep_daily': int,
+            'keep_monthly': int,
+            'keep_yearly': int
+        }
+        
+        errors = []
+        
+        # Check required fields
+        for field, expected_type in required_fields.items():
+            if field not in job:
+                errors.append(f"Missing required field: {field}")
+            elif not isinstance(job[field], expected_type):
+                errors.append(f"Field '{field}' has wrong type: expected {expected_type.__name__}, got {type(job[field]).__name__}")
+        
+        # Check source directories
+        if 'source_directories' in job and job['source_directories']:
+            for source_dir in job['source_directories']:
+                if not isinstance(source_dir, str) or not source_dir.strip():
+                    errors.append(f"Invalid source directory: {source_dir}")
+        else:
+            errors.append("Job must have at least one source directory")
+        
+        # Check compression is valid
+        if 'compression' in job:
+            valid_compressions = ['none', 'lz4', 'zstd', 'zlib', 'lzma']
+            if job['compression'] not in valid_compressions:
+                errors.append(f"Invalid compression type: {job['compression']}. Must be one of: {', '.join(valid_compressions)}")
+        
+        # Check retention policy values are positive
+        for field in ['keep_daily', 'keep_monthly', 'keep_yearly']:
+            if field in job and job[field] < 0:
+                errors.append(f"Field '{field}' must be non-negative, got: {job[field]}")
+        
+        # Check passphrase - must be available either in job config or environment
+        passphrase = job.get('repository_passphrase') or self._get_env('BORG_PASSPHRASE')
+        if not passphrase:
+            errors.append("No repository passphrase provided. Set 'repository_passphrase' in job config or BORG_PASSPHRASE environment variable")
+        
+        if errors:
+            error_msg = "Job validation failed:\n  - " + "\n  - ".join(errors)
+            raise ValueError(error_msg)
+        
+        logger.debug(f"Job configuration validated successfully for job: {job['name']}")
+
     def _setup_job_logger(self, job_name):
         """Set up a logger for a specific job."""
         logger = logging.getLogger(f'BackupJob_{job_name}')
         
+        # Remove any existing handlers to avoid duplicates on repeated runs
+        logger.handlers.clear()
+        
         # Create file handler for this job
         log_file = os.path.join(self.log_dir, f'{job_name}.log')
-        handler = logging.FileHandler(log_file)
-        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         
-        logger.addHandler(handler)
+        try:
+            handler = logging.FileHandler(log_file)
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+            logger.addHandler(handler)
+        except Exception as e:
+            self.logger.warning(f"Failed to create log file handler for {job_name}: {e}")
+            # Fall back to console only
+        
         logger.setLevel(logging.INFO)
-        
         return logger
 
     def _create_log_entry(self, job_id, started_at):
@@ -258,6 +380,9 @@ class BackupExecutor:
 
     def _init_repository(self, repo_path, passphrase, logger):
         """Initialize a new Borg repository."""
+        if not passphrase:
+            raise Exception("Could not initialize repository: Passphrase is required but not provided. Please set 'repository_passphrase' when creating the backup job.")
+        
         logger.info(f"Initializing new repository: {repo_path}")
         
         # Create directory if it doesn't exist
@@ -270,11 +395,16 @@ class BackupExecutor:
             cmd,
             capture_output=True,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=passphrase)
+            env=self._get_borg_env(passphrase)
         )
         
         if result.returncode != 0:
-            raise Exception(f"Failed to initialize repository: {result.stderr}")
+            error_msg = result.stderr
+            # Check for specific passphrase-related errors
+            if 'passphrase' in error_msg.lower():
+                raise Exception(f"Repository initialization failed - passphrase error: {error_msg}")
+            else:
+                raise Exception(f"Failed to initialize repository: {error_msg}")
         
         logger.info("Repository initialized successfully")
 
@@ -309,7 +439,7 @@ class BackupExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+            env=self._get_borg_env(job['repository_passphrase'])
         )
         
         # Wait for completion
@@ -348,7 +478,7 @@ class BackupExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+            env=self._get_borg_env(job['repository_passphrase'])
         )
         
         stdout, stderr = process.communicate()
@@ -378,7 +508,7 @@ class BackupExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+            env=self._get_borg_env(job['repository_passphrase'])
         )
         
         stdout, stderr = process.communicate()
@@ -431,7 +561,7 @@ class BackupExecutor:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+                env=self._get_borg_env(job['repository_passphrase'])
             )
             
             stdout, stderr = process.communicate()
@@ -477,7 +607,7 @@ class BackupExecutor:
             cmd,
             capture_output=True,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+            env=self._get_borg_env(job['repository_passphrase'])
         )
         
         if process.returncode != 0:
@@ -505,7 +635,7 @@ class BackupExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+            env=self._get_borg_env(job['repository_passphrase'])
         )
         
         stdout, stderr = process.communicate()
@@ -535,7 +665,7 @@ class BackupExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=job['repository_passphrase'])
+            env=self._get_borg_env(job['repository_passphrase'])
         )
         
         stdout, stderr = process.communicate()

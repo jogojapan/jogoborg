@@ -58,10 +58,17 @@ def get_encryption_key():
         with open(gpg_key_file, 'rb') as f:
             encrypted_key = f.read()
         
-        # Decrypt the key
+        # Decrypt the key (undo the XOR)
         key = bytes(a ^ b for a, b in zip(encrypted_key, passphrase_bytes * (len(encrypted_key) // len(passphrase_bytes) + 1)))
         
-        return key
+        # Verify it's a valid Fernet key by trying to create a Fernet instance
+        try:
+            Fernet(key)
+            return key
+        except Exception as verify_error:
+            print(f"ERROR: Decrypted key is not a valid Fernet key: {verify_error}")
+            return None
+            
     except Exception as e:
         print(f"ERROR: Failed to decrypt GPG key: {e}")
         return None
