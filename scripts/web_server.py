@@ -877,16 +877,46 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         if path == '/' or path == '':
             path = '/index.html'
         
-        file_path = '/app/build/web' + path
+        web_dir = os.environ.get('JOGOBORG_WEB_DIR', '/app/build/web')
+        file_path = os.path.join(web_dir, path.lstrip('/'))
         
+        # If file doesn't exist, handle fallback logic
         if not os.path.exists(file_path):
-            # Try adding .html extension
-            html_path = file_path + '.html'
-            if os.path.exists(html_path):
-                file_path = html_path
+            # For index.html, try index-dev.html as fallback
+            if path.endswith('index.html') or path == '/index.html':
+                dev_index_path = os.path.join(web_dir, 'index-dev.html')
+                if os.path.exists(dev_index_path):
+                    file_path = dev_index_path
+                    logger.info("Serving development index page")
+                else:
+                    # Neither index.html nor index-dev.html exist
+                    logger.error(f"Static file not found: {file_path}")
+                    self._send_error(404, "File not found")
+                    return
             else:
-                # Serve index.html for client-side routing
-                file_path = '/app/build/web/index.html'
+                # For non-index requests, don't serve index.html
+                # This preserves client-side routing but doesn't serve HTML for asset files
+                file_extension = os.path.splitext(path)[1].lower()
+                
+                # Only serve index.html for routes that look like SPA routes (no extension)
+                if file_extension in ['', '.html']:
+                    # SPA route - serve index.html for client-side routing
+                    index_path = os.path.join(web_dir, 'index.html')
+                    if os.path.exists(index_path):
+                        file_path = index_path
+                    else:
+                        dev_index_path = os.path.join(web_dir, 'index-dev.html')
+                        if os.path.exists(dev_index_path):
+                            file_path = dev_index_path
+                        else:
+                            logger.error(f"Static file not found: {file_path}")
+                            self._send_error(404, "File not found")
+                            return
+                else:
+                    # Asset file (js, css, json, wasm, etc.) - don't fallback to index.html
+                    logger.error(f"Static file not found: {file_path}")
+                    self._send_error(404, "File not found")
+                    return
         
         try:
             with open(file_path, 'rb') as f:

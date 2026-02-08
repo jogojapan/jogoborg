@@ -27,6 +27,69 @@ which borg
 which gpg
 ```
 
+### Flutter Web Build Setup (Optional but Recommended)
+
+For testing with the actual Flutter UI, you'll need to build the web app. This is highly recommended for proper integration testing.
+
+#### Install Flutter
+
+```bash
+# Install Flutter SDK (if not already installed)
+# Official docs: https://docs.flutter.dev/get-started/install
+
+# For Linux:
+cd ~/
+git clone https://github.com/flutter/flutter.git -b stable
+export PATH="$PATH:$HOME/flutter/bin"
+
+# Verify installation
+flutter --version
+```
+
+#### Build Flutter Web
+
+```bash
+# From project root (not local_test)
+cd /path/to/jogoborg
+
+# Get dependencies
+flutter pub get
+
+# Build for web (this creates build/web/)
+# Use debug build for faster iteration during development
+flutter build web
+
+# Verify build output
+ls -la build/web/index.html
+```
+
+**Build Time**: Debug build takes 1-2 minutes. First build may take longer as dependencies are compiled.
+
+**Release vs Debug Builds**:
+- **Debug build** (default, recommended for local testing):
+  - Faster compilation (~1-2 minutes)
+  - Includes sourcemaps for debugging
+  - Better for UI development and iteration
+- **Release build** (use when validating for production):
+  ```bash
+  flutter build web --release
+  ```
+  - Slower compilation (~5-10 minutes)
+  - Optimized performance and smaller bundle
+  - Use before deployment to test production behavior
+
+#### Using the Built Web App
+
+The local test setup will automatically detect and serve the Flutter web build if it exists:
+
+```bash
+cd local_test
+./run_local.sh
+# The web interface will be at http://localhost:8080 with the real Flutter UI
+```
+
+If no Flutter build is found, the server falls back to a development API testing interface at `index-dev.html`.
+
 ### Initial Setup
 
 ```bash

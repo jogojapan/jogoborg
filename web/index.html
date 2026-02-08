@@ -1,27 +1,41 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <base href="$FLUTTER_BASE_HREF">
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+  -->
+  <base href="/">
+
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Jogoborg">
+  <meta name="description" content="Jogoborg - Borg Backup Manager">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-status-bar-style" content="black">
   <meta name="mobile-web-app-title" content="Jogoborg">
+
   <title>Jogoborg</title>
+  <link rel="manifest" href="manifest.json">
+
+  <script>
+    // Set environment variables BEFORE Flutter initializes
+    // For Docker: JOGOBORG_URL_PLACEHOLDER gets replaced by sed in docker-entrypoint.sh
+    // For local dev: Falls back to window.location.origin if placeholder not replaced
+    var JOGOBORG_URL_VALUE = "JOGOBORG_URL_PLACEHOLDER";
+    window.JOGOBORG_URL = (JOGOBORG_URL_VALUE !== "JOGOBORG_URL_PLACEHOLDER") 
+      ? JOGOBORG_URL_VALUE 
+      : window.location.origin;
+  </script>
+
+  <script src="flutter_bootstrap.js" async></script>
 </head>
 <body>
-  <script>
-    {{flutter_js}}
-    {{flutter_build_config}}
-
-    // Environment variables are added during container startup, by
-    // text replacement.
-    window.JOGOBORG_URL = "JOGOBORG_URL_PLACEHOLDER";
-
-    window.addEventListener('load', function(ev) {
-      _flutter.loader.load();
-    });
-  </script>
 </body>
 </html>
