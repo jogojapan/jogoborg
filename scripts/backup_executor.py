@@ -111,6 +111,23 @@ class BackupExecutor:
         # Initialize log entry
         log_entry_id = self._create_log_entry(job_id, started_at)
         
+        # Track if an exception occurs so we can still run post-command
+        backup_exception = None
+        create_duration = None
+        create_max_memory = None
+        prune_duration = None
+        prune_max_memory = None
+        compact_duration = None
+        compact_max_memory = None
+        db_dump_duration = None
+        db_dump_max_memory = None
+        db_archive_duration = None
+        db_archive_max_memory = None
+        db_prune_duration = None
+        db_prune_max_memory = None
+        db_compact_duration = None
+        db_compact_max_memory = None
+        
         try:
             # Execute pre-command if specified
             if job.get('pre_command'):
@@ -140,15 +157,6 @@ class BackupExecutor:
             )
             
             # Handle database dumps if configured
-            db_dump_duration = None
-            db_dump_max_memory = None
-            db_archive_duration = None  
-            db_archive_max_memory = None
-            db_prune_duration = None
-            db_prune_max_memory = None
-            db_compact_duration = None
-            db_compact_max_memory = None
-            
             if job.get('db_config'):
                 (db_dump_duration, db_dump_max_memory, 
                  db_archive_duration, db_archive_max_memory,
@@ -161,13 +169,26 @@ class BackupExecutor:
             if job.get('s3_config'):
                 self._execute_s3_sync(job, repo_path, job_logger)
             
-            # Execute post-command if specified
+        except Exception as e:
+            backup_exception = e
+        
+        try:
+            # Execute post-command if specified (always runs, even on failure)
             if job.get('post_command'):
                 job_logger.info(f"Executing post-command: {job['post_command']}")
                 self._execute_command(job['post_command'], job_logger)
-            
-            # Update log entry with success
-            finished_at = datetime.now(timezone.utc)
+        except Exception as e:
+            job_logger.error(f"Post-command failed: {e}")
+            # If backup succeeded but post-command failed, that's now the error
+            if backup_exception is None:
+                backup_exception = e
+            # Otherwise keep the original backup exception
+        
+        # Now handle the overall result
+        finished_at = datetime.now(timezone.utc)
+        
+        if backup_exception is None:
+            # Job succeeded
             self._update_log_entry(
                 log_entry_id, finished_at, 'completed',
                 create_duration, create_max_memory,
@@ -198,18 +219,17 @@ class BackupExecutor:
                 'db_compact_duration': db_compact_duration,
                 'db_compact_max_memory': db_compact_max_memory,
             })
+        else:
+            # Job failed
+            self._update_log_entry(log_entry_id, finished_at, 'failed', error_message=str(backup_exception))
             
-        except Exception as e:
-            # Update log entry with error
-            finished_at = datetime.now(timezone.utc)
-            self._update_log_entry(log_entry_id, finished_at, 'failed', error_message=str(e))
-            
-            job_logger.error(f"Backup job failed: {job_name} - {str(e)}")
+            job_logger.error(f"Backup job failed: {job_name} - {str(backup_exception)}")
             
             # Send failure notification
-            self._send_failure_notification(job, started_at, str(e))
+            self._send_failure_notification(job, started_at, str(backup_exception))
             
-            raise
+            # Re-raise the original exception
+            raise backup_exception
 
     def _validate_job_config(self, job, logger):
         """Validate that a job configuration has all required fields."""
