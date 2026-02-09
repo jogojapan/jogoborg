@@ -696,9 +696,8 @@ class BackupExecutor:
     def _execute_command(self, command, logger):
         """Execute a shell command."""
         try:
-            # For Docker commands, ensure we have proper socket access
-            # if command.strip().startswith('docker') and os.path.exists('/var/run/docker.sock'):
-            #     command = self._wrap_docker_command(command, logger)
+            # Clean up docker commands that may include problematic TTY flags
+            command = self._clean_docker_command(command, logger)
             
             result = subprocess.run(
                 command,
@@ -722,6 +721,34 @@ class BackupExecutor:
         except Exception as e:
             logger.error(f"Command execution failed: {e}")
             raise
+
+    def _clean_docker_command(self, command, logger):
+        """
+        Clean up docker commands to work in non-TTY environments.
+        Removes -it flags from docker exec commands which are incompatible
+        with subprocess capture_output=True when running inside a container.
+        """
+        if 'docker exec' not in command:
+            return command
+        
+        original_command = command
+        # Remove -it, -i, or -t flags from docker exec commands
+        # These flags require a TTY which isn't available in containerized subprocess contexts
+        command = command.replace(' -it ', ' ')
+        command = command.replace(' -i ', ' ')
+        command = command.replace(' -t ', ' ')
+        # Also handle when flags are at the end or beginning of the command
+        command = command.replace(' -it\n', ' ')
+        command = command.replace('exec -it', 'exec')
+        command = command.replace('exec -i ', 'exec ')
+        command = command.replace('exec -t ', 'exec ')
+        
+        if command != original_command:
+            logger.debug(f"Cleaned docker command (removed TTY flags)")
+            logger.debug(f"  Original: {original_command}")
+            logger.debug(f"  Cleaned:  {command}")
+        
+        return command
 
     def _wrap_docker_command(self, command, logger):
         """Wrap docker commands to ensure proper socket access."""
