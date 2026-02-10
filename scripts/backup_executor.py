@@ -165,24 +165,21 @@ class BackupExecutor:
                     job, repo_path, started_at, job_logger
                 )
             
-            # Sync to S3 if configured
-            if job.get('s3_config'):
-                self._execute_s3_sync(job, repo_path, job_logger)
+            # Execute post-command if specified (after borg/DB steps, before S3 sync)
+            if job.get('post_command'):
+                job_logger.info(f"Executing post-command: {job['post_command']}")
+                self._execute_command(job['post_command'], job_logger)
             
         except Exception as e:
             backup_exception = e
         
         try:
-            # Execute post-command if specified (always runs, even on failure)
-            if job.get('post_command'):
-                job_logger.info(f"Executing post-command: {job['post_command']}")
-                self._execute_command(job['post_command'], job_logger)
+            # Sync to S3 if configured (only if backup steps succeeded)
+            if backup_exception is None and job.get('s3_config'):
+                self._execute_s3_sync(job, repo_path, job_logger)
         except Exception as e:
-            job_logger.error(f"Post-command failed: {e}")
-            # If backup succeeded but post-command failed, that's now the error
-            if backup_exception is None:
-                backup_exception = e
-            # Otherwise keep the original backup exception
+            job_logger.error(f"S3 sync failed: {e}")
+            backup_exception = e
         
         # Now handle the overall result
         finished_at = datetime.now(timezone.utc)
