@@ -42,7 +42,8 @@ class AuthService extends ChangeNotifier {
       _isAuthenticated = false;
       _token = null;
       _isInitialized = true;
-      debugPrint('AuthService initialized (SharedPreferences skipped for WASM compatibility)');
+      debugPrint(
+          'AuthService initialized (SharedPreferences skipped for WASM compatibility)');
       notifyListeners();
     } catch (e) {
       debugPrint('Error initializing AuthService: $e');

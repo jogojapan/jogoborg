@@ -15,7 +15,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final authService = AuthService();
-  
+
   try {
     await authService.initialize();
   } catch (e) {
