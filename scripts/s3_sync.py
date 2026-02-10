@@ -177,10 +177,91 @@ endpoint = {s3_config['endpoint']}
                         logger.info(f"rclone: {line_content}")
         
         if process.returncode != 0:
+            # Extract key error messages from rclone output for better reporting
+            error_summary = self._extract_key_errors(stderr)
             error_msg = f"rclone sync failed with return code {process.returncode}"
-            if stderr:
+            if error_summary:
+                error_msg += f"\n\nKey errors:\n{error_summary}"
+            elif stderr:
                 error_msg += f". Errors: {stderr.strip()}"
             raise Exception(error_msg)
+
+    def _extract_key_errors(self, stderr):
+        """Extract key error messages from rclone stderr output.
+        
+        Filters out duplicate errors and retry attempts, keeping only the most
+        important error messages for user notification.
+        """
+        key_errors = []
+        seen_errors = set()  # Track unique errors to avoid duplicates
+        
+        if not stderr:
+            return ""
+        
+        lines = stderr.split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Look for ERROR lines
+            if not line or 'ERROR' not in line:
+                continue
+            
+            # Skip retry attempt lines - these are just informational
+            if 'Attempt' in line and 'failed with' in line:
+                continue
+            
+            # Extract the part after 'ERROR'
+            if 'ERROR' in line:
+                # Split on 'ERROR' and get everything after it
+                error_part = line.split('ERROR', 1)[1].strip()
+                # Clean up leading colons and spaces (handles ': : ' patterns)
+                error_part = error_part.lstrip(': ').lstrip()
+
+                
+                # Check for specific error types that are important to report
+                important_error_types = [
+                    'BucketRegionError', 'AccessDenied', 'InvalidAccessKeyId', 
+                    'SignatureDoesNotMatch', 'NoSuchBucket', 'NoSuchKey',
+                    'Unauthorized'
+                ]
+                
+                # Check if this is an important error type
+                is_important = any(err_type in error_part for err_type in important_error_types)
+                
+                # Also flag common S3 permission/access errors
+                if not is_important:
+                    is_important = any(phrase in error_part.lower() for phrase in 
+                                      ['not authorized', 'denied', 'permission', 'credentials',
+                                       'failed to update region', 'status code: 403'])
+                
+                if is_important:
+                    # Try to extract a concise error message
+                    # For multi-line errors in a single line, just take the key part
+                    if len(error_part) > 150:
+                        # For very long error messages, try to extract the key bit
+                        if 'BucketRegionError' in error_part:
+                            error_part = 'BucketRegionError: ' + error_part.split('BucketRegionError')[-1].split('\n')[0]
+                        elif 'AccessDenied' in error_part:
+                            error_part = 'AccessDenied: ' + error_part.split('AccessDenied')[-1].split('\n')[0]
+                    
+                    # Avoid adding duplicate errors
+                    if error_part not in seen_errors:
+                        key_errors.append(error_part)
+                        seen_errors.add(error_part)
+        
+        # If we found key errors, format them nicely
+        if key_errors:
+            # Remove duplicates while preserving order
+            unique_errors = []
+            for err in key_errors:
+                if err not in unique_errors:
+                    unique_errors.append(err)
+            
+            # Format as a bulleted list, limiting to top 5 errors
+            return '\n- '.join([''] + unique_errors[:5])
+        
+        return ""
 
     def _calculate_max_age(self, last_sync_time):
         """Calculate max-age parameter for rclone based on last sync time."""

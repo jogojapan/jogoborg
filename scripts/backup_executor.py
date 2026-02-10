@@ -871,6 +871,11 @@ Error: {error_message}
                 message=message.strip(),
                 is_error=True
             )
+            # Log that notification was sent
+            if 'S3' in error_message or 'rclone' in error_message:
+                self.logger.info(f"Failure notification sent for S3 sync error: {job['name']}")
+            else:
+                self.logger.info(f"Failure notification sent for backup failure: {job['name']}")
         except Exception as e:
             self.logger.error(f"Failed to send failure notification: {e}")
 
