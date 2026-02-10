@@ -638,6 +638,7 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
   final _secretKeyController = TextEditingController();
   String _storageClass = 'STANDARD';
   String _provider = 'aws';
+  bool _isTesting = false;
 
   @override
   void initState() {
@@ -653,6 +654,71 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
       _provider = config['provider'] ?? 'aws';
     } else {
       _regionController.text = 'us-east-1';
+    }
+  }
+
+  Future<void> _testS3() async {
+    if (_bucketController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a bucket name'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    if (_accessKeyController.text.isEmpty ||
+        _secretKeyController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter access key and secret key'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isTesting = true);
+
+    try {
+      final apiService = context.read<ApiService>();
+      final authService = context.read<AuthService>();
+
+      await apiService.post(
+        '/s3/test',
+        {
+          'provider': _provider,
+          'endpoint': _endpointController.text,
+          'bucket': _bucketController.text,
+          'region': _regionController.text,
+          'access_key': _accessKeyController.text,
+          'secret_key': _secretKeyController.text,
+        },
+        token: authService.token,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('S3 connection successful!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('S3 test failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isTesting = false);
+      }
     }
   }
 
@@ -767,6 +833,16 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _isTesting ? null : _testS3,
+          child: _isTesting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Test'),
         ),
         ElevatedButton(
           onPressed: () {

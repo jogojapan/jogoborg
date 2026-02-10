@@ -147,6 +147,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._handle_test_webhook(data)
             elif path == '/api/database/test':
                 self._handle_test_database(data)
+            elif path == '/api/s3/test':
+                self._handle_test_s3(data)
             elif path.startswith('/api/jobs/') and path.endswith('/trigger'):
                 job_id = path.split('/')[-2]
                 self._handle_trigger_job(job_id)
@@ -956,6 +958,20 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error testing database: {e}")
             self._send_error(500, "Database test failed")
+
+    def _handle_test_s3(self, data):
+        """Test S3 configuration."""
+        try:
+            success, message = self.s3_syncer.test_s3_connection(data)
+            
+            if success:
+                self._send_json_response({'message': message})
+            else:
+                self._send_error(400, message)
+                
+        except Exception as e:
+            logger.error(f"Error testing S3 connection: {e}")
+            self._send_error(500, "S3 test failed")
 
     def _serve_static_file(self, path):
         """Serve static files from Flutter web build."""

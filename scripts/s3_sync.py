@@ -294,13 +294,24 @@ endpoint = {s3_config['endpoint']}
         try:
             remote_name = self._create_rclone_config(s3_config)
             
-            # Test with rclone lsd (list directories)
+            # Extract just the bucket name from the bucket field
+            # (bucket field might contain s3:// prefix or path suffix)
+            bucket_raw = s3_config['bucket']
+            if bucket_raw.startswith('s3://'):
+                bucket_name = bucket_raw[5:].split('/')[0]
+            else:
+                bucket_name = bucket_raw.split('/')[0]
+            
+            # Test with rclone lsd to verify bucket exists and is accessible
+            # This will fail if the bucket doesn't exist or wrong region/credentials
             cmd = [
                 'rclone', 'lsd',
-                f"{remote_name}:{s3_config['bucket']}",
+                f"{remote_name}:{bucket_name}",
                 '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
                 '--max-depth', '1'
             ]
+            
+            self.logger.info(f"Testing S3 connection with: {' '.join(cmd)}")
             
             result = subprocess.run(
                 cmd,
@@ -309,14 +320,37 @@ endpoint = {s3_config['endpoint']}
                 timeout=30
             )
             
+            self.logger.info(f"rclone returned with code: {result.returncode}")
+            if result.stdout:
+                self.logger.info(f"rclone stdout: {result.stdout}")
+            if result.stderr:
+                self.logger.info(f"rclone stderr: {result.stderr}")
+            
+            # Check if rclone had to switch regions (indicates wrong region was specified)
+            if result.stderr and "Switched region to" in result.stderr:
+                self.logger.error(f"Region mismatch detected: {result.stderr}")
+                # Extract the actual region from the message
+                import re
+                match = re.search(r'Switched region to "([^"]+)" from "([^"]+)"', result.stderr)
+                if match:
+                    actual_region = match.group(1)
+                    specified_region = match.group(2)
+                    return False, f"Region mismatch: bucket is in {actual_region}, but you specified {specified_region}"
+            
             if result.returncode == 0:
                 return True, "S3 connection successful"
             else:
-                return False, f"S3 connection failed: {result.stderr}"
+                # Extract key error message from stderr
+                stderr_lines = result.stderr.strip().split('\n')
+                error_msg = stderr_lines[-1] if stderr_lines else result.stderr
+                self.logger.error(f"S3 test failed with code {result.returncode}: {error_msg}")
+                return False, f"S3 connection failed: {error_msg}"
                 
         except subprocess.TimeoutExpired:
+            self.logger.error("S3 connection test timed out")
             return False, "S3 connection test timed out"
         except Exception as e:
+            self.logger.error(f"S3 connection test error: {e}")
             return False, f"S3 connection test error: {str(e)}"
 
     def list_backups(self, s3_config, repo_name=None):
