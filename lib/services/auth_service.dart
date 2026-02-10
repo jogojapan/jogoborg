@@ -37,12 +37,12 @@ class AuthService extends ChangeNotifier {
   // Initialize auth service by loading saved token
   Future<void> initialize() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      _token = prefs.getString(_tokenKey);
-      _isAuthenticated = _token != null && _token!.isNotEmpty;
+      // Skip SharedPreferences on web - it causes issues with WASM
+      // Just start unauthenticated
+      _isAuthenticated = false;
+      _token = null;
       _isInitialized = true;
-      debugPrint(
-          'AuthService initialized. Token loaded: ${_token != null}, Length: ${_token?.length ?? 0}');
+      debugPrint('AuthService initialized (SharedPreferences skipped for WASM compatibility)');
       notifyListeners();
     } catch (e) {
       debugPrint('Error initializing AuthService: $e');

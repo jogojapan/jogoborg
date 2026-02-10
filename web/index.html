@@ -26,6 +26,16 @@
   <!-- Prevent browser from looking for favicon.ico -->
   <link rel="icon" href="data:image/svg+xml,<svg></svg>">
 
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #ffffff;
+    }
+  </style>
+
   <script>
     // Set environment variables BEFORE Flutter initializes
     // For Docker: JOGOBORG_URL_PLACEHOLDER gets replaced by sed in docker-entrypoint.sh
@@ -39,5 +49,40 @@
   <script src="flutter_bootstrap.js" async></script>
 </head>
 <body>
+  <div id="loading" style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #f0f0f0;">
+    <div style="text-align: center;">
+      <div style="width: 50px; height: 50px; border: 4px solid #2196F3; border-top: 4px solid transparent; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+      <p style="font-family: sans-serif; color: #666;">Initializing Jogoborg...</p>
+    </div>
+  </div>
+  <style>
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+  <script>
+    // Hide loading spinner when Flutter takes over rendering
+    var loadingElement = document.getElementById('loading');
+    
+    // Check if Flutter has rendered every 100ms
+    var checkInterval = setInterval(function() {
+      // Check for Flutter rendering elements
+      if (document.querySelector('flt-glass-pane') || 
+          document.querySelector('canvas')) {
+        clearInterval(checkInterval);
+        if (loadingElement) {
+          loadingElement.style.display = 'none';
+        }
+      }
+    }, 100);
+    
+    // Fallback: hide after 10 seconds
+    setTimeout(function() {
+      clearInterval(checkInterval);
+      if (loadingElement) {
+        loadingElement.style.display = 'none';
+      }
+    }, 10000);
+  </script>
 </body>
 </html>

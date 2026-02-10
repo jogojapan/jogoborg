@@ -1046,6 +1046,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             return 'text/css'
         elif file_path.endswith('.js'):
             return 'application/javascript'
+        elif file_path.endswith('.mjs'):
+            return 'application/javascript'
+        elif file_path.endswith('.wasm'):
+            return 'application/wasm'
         elif file_path.endswith('.json'):
             return 'application/json'
         elif file_path.endswith('.png'):

@@ -14,9 +14,13 @@ import 'screens/notifications_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Create and initialize AuthService with persisted token
   final authService = AuthService();
-  await authService.initialize();
+  
+  try {
+    await authService.initialize();
+  } catch (e) {
+    debugPrint('Error initializing AuthService: $e');
+  }
 
   runApp(JogoborgApp(authService: authService));
 }
@@ -54,7 +58,7 @@ class JogoborgApp extends StatelessWidget {
 
   GoRouter _createRouter(AuthService authService) {
     return GoRouter(
-      initialLocation: authService.isAuthenticated ? '/dashboard' : '/login',
+      initialLocation: '/login',
       refreshListenable: authService,
       redirect: (context, state) {
         final isAuthenticated = authService.isAuthenticated;
