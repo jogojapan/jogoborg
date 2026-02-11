@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   jogoborg:
-    build: .
-    # image: jogoborg:latest  # Use this instead of build when using pre-built image
+    # build: .
+    image: jogoborg:latest
     container_name: jogoborg
 
     # Add the docker group if you want to use docker commands as part
@@ -31,10 +29,10 @@ services:
       - jogoborg_repos:/borgspace
       
       # Configuration, database, and encrypted settings
-      - jogoborg_config:/config
+      - ./test_jogoborg_config:/config
       
       # Application and job logs
-      - jogoborg_logs:/log
+      - ./test_jogoborg_logs:/log
       
       # Docker socket for executing docker commands from pre/post commands
       - /var/run/docker.sock:/var/run/docker.sock
@@ -42,7 +40,7 @@ services:
       # Web interface credentials
       # NOTE: Quote passwords containing special characters ($, `, etc.) to prevent shell expansion
       - JOGOBORG_WEB_USERNAME=admin
-      - JOGOBORG_WEB_PASSWORD='changeme_secure_password'
+      - JOGOBORG_WEB_PASSWORD=1resurge
       
       # Encryption passphrase for storing credentials securely
       - JOGOBORG_GPG_PASSPHRASE=changeme_encryption_key

@@ -1,18 +1,58 @@
-FROM ubuntu:22.04
+# Build stage - compile Flutter web application
+FROM ubuntu:24.04 AS builder
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+# Install Flutter build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     unzip \
     xz-utils \
     zip \
-    libgconf-2-4 \
-    gdb \
-    libstdc++6 \
-    libglu1-mesa \
-    fonts-droid-fallback \
-    lib32stdc++6 \
+    ca-certificates \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user for Flutter
+RUN useradd -m -s /bin/bash flutter && \
+    echo 'flutter ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+
+# Create app directory with proper ownership
+RUN mkdir -p /app && chown -R flutter:flutter /app
+
+USER flutter
+
+# Install Flutter
+RUN git clone https://github.com/flutter/flutter.git -b stable /home/flutter/flutter
+ENV PATH="/home/flutter/flutter/bin:${PATH}"
+
+# Configure Flutter and pre-cache web
+RUN flutter config --enable-web --no-analytics && \
+    flutter precache --web
+
+WORKDIR /app
+COPY --chown=flutter:flutter pubspec.yaml ./
+RUN flutter pub get
+
+COPY --chown=flutter:flutter . .
+# Use full main application
+RUN mv lib/main.dart lib/main_simple.dart || true && \
+    mv lib/main_full.dart lib/main.dart || true
+
+# Build Flutter web application
+RUN flutter build web --release
+
+# Runtime stage - Ubuntu with Python and backend services
+FROM ubuntu:24.04
+
+# Install system dependencies with explicit apt configuration
+RUN apt-get clean && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    unzip \
+    xz-utils \
+    zip \
     python3 \
     borgbackup \
     rclone \
@@ -38,55 +78,19 @@ RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /
     && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for Flutter
-RUN useradd -m -s /bin/bash flutter && \
-    echo 'flutter ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+# Create app directory
+RUN mkdir -p /app
 
-# Install Flutter as non-root user
-USER flutter
-WORKDIR /home/flutter
-
-# Install Flutter
-RUN git clone https://github.com/flutter/flutter.git -b stable flutter
-ENV PATH="/home/flutter/flutter/bin:${PATH}"
-
-# Pre-download Flutter dependencies and configure
-RUN flutter config --enable-web --no-analytics
-RUN flutter precache --web
-
-# Create app directory and set permissions
-USER root
-RUN mkdir -p /app && chown -R flutter:flutter /app
-
-USER flutter
 WORKDIR /app
 
-# Copy Flutter project files (as root first, then change ownership)
-USER root
-COPY pubspec.yaml ./
-RUN chown flutter:flutter pubspec.yaml
-
-USER flutter
-RUN flutter pub get
+# Copy compiled Flutter web assets from builder
+COPY --from=builder /app/build/web /app/build/web
 
 # Copy application source code
-USER root
 COPY . .
-RUN chown -R flutter:flutter /app
-
-USER flutter
-# Use full main application
-RUN mv lib/main.dart lib/main_simple.dart || true
-RUN mv lib/main_full.dart lib/main.dart || true
-
-# Build Flutter web application
-RUN flutter build web --release
-
-# Switch back to root for final setup
-USER root
 
 # Install Python dependencies for backend services
-RUN pip3 install \
+RUN pip3 install --break-system-packages \
     cryptography \
     requests \
     croniter
