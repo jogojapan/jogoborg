@@ -127,6 +127,8 @@ class BackupExecutor:
         db_prune_max_memory = None
         db_compact_duration = None
         db_compact_max_memory = None
+        s3_data_transferred = None
+        s3_elapsed_time = None
         
         try:
             # Execute pre-command if specified
@@ -176,7 +178,10 @@ class BackupExecutor:
         try:
             # Sync to S3 if configured (only if backup steps succeeded)
             if backup_exception is None and job.get('s3_config'):
-                self._execute_s3_sync(job, repo_path, job_logger)
+                s3_stats = self._execute_s3_sync(job, repo_path, job_logger)
+                if s3_stats:
+                    s3_data_transferred = s3_stats.get('data_transferred')
+                    s3_elapsed_time = s3_stats.get('elapsed_time')
         except Exception as e:
             job_logger.error(f"S3 sync failed: {e}")
             backup_exception = e
@@ -215,6 +220,8 @@ class BackupExecutor:
                 'db_prune_max_memory': db_prune_max_memory,
                 'db_compact_duration': db_compact_duration,
                 'db_compact_max_memory': db_compact_max_memory,
+                's3_data_transferred': s3_data_transferred,
+                's3_elapsed_time': s3_elapsed_time,
             })
         else:
             # Job failed
@@ -699,12 +706,13 @@ class BackupExecutor:
         return duration, int(max_memory)
 
     def _execute_s3_sync(self, job, repo_path, logger):
-        """Sync repository to S3."""
+        """Sync repository to S3 and return sync statistics."""
         logger.info("Starting S3 sync")
         
         try:
-            self.s3_syncer.sync_repository(job['s3_config'], repo_path, logger)
+            stats = self.s3_syncer.sync_repository(job['s3_config'], repo_path, logger)
             logger.info("S3 sync completed successfully")
+            return stats
         except Exception as e:
             logger.error(f"S3 sync failed: {e}")
             # Re-raise exception so backup job is marked as failed
@@ -843,6 +851,10 @@ Statistics:
             message += f"- DB Archive: {stats['db_archive_duration']}s, {stats['db_archive_max_memory']}MB\n"
             message += f"- DB Prune: {stats['db_prune_duration']}s, {stats['db_prune_max_memory']}MB\n"
             message += f"- DB Compact: {stats['db_compact_duration']}s, {stats['db_compact_max_memory']}MB\n"
+        
+        # Include S3 sync stats if they exist
+        if stats.get('s3_data_transferred') is not None or stats.get('s3_elapsed_time') is not None:
+            message += f"- S3 Sync: {stats.get('s3_data_transferred', 'N/A')} transferred in {stats.get('s3_elapsed_time', 'N/A')}\n"
         
         try:
             self.notification_service.send_notification(

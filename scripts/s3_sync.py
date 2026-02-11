@@ -16,7 +16,11 @@ class S3Syncer:
         os.makedirs(self.rclone_config_dir, exist_ok=True)
 
     def sync_repository(self, s3_config, repo_path, logger):
-        """Sync a Borg repository to S3 using rclone."""
+        """Sync a Borg repository to S3 using rclone.
+        
+        Returns:
+            dict: Statistics from the sync operation including data_transferred and elapsed_time
+        """
         try:
             # Create rclone remote configuration
             remote_name = self._create_rclone_config(s3_config)
@@ -42,12 +46,14 @@ class S3Syncer:
                 s3_path = f"{remote_name}:{s3_bucket_raw.strip('/')}/{repo_name}"
             
             # Run rclone sync with options to only copy modified files
-            self._run_rclone_sync(repo_path, s3_path, logger)
+            stats = self._run_rclone_sync(repo_path, s3_path, logger)
             
             # Update last sync timestamp
             self._update_last_sync_time(repo_path)
             
             logger.info(f"Successfully synced repository to S3: {s3_path}")
+            
+            return stats
             
         except Exception as e:
             logger.error(f"S3 sync failed: {e}")
@@ -104,7 +110,11 @@ endpoint = {s3_config['endpoint']}
         return remote_name
 
     def _run_rclone_sync(self, source_path, dest_path, logger):
-        """Run rclone sync command with appropriate options."""
+        """Run rclone sync command with appropriate options.
+        
+        Returns:
+            dict: Statistics including data_transferred and elapsed_time
+        """
         
         # Get the last sync time
         last_sync_file = os.path.join(source_path, '.jogoborg_last_sync')
@@ -153,6 +163,9 @@ endpoint = {s3_config['endpoint']}
         # Capture both stdout and stderr
         stdout, stderr = process.communicate()
         
+        # Extract transfer statistics from stdout before logging
+        stats = self._extract_rclone_stats(stdout, stderr)
+        
         # Log stdout at appropriate levels based on content
         if stdout:
             for line in stdout.strip().split('\n'):
@@ -185,6 +198,79 @@ endpoint = {s3_config['endpoint']}
             elif stderr:
                 error_msg += f". Errors: {stderr.strip()}"
             raise Exception(error_msg)
+        
+        return stats
+
+    def _extract_rclone_stats(self, stdout, stderr):
+        """Extract transfer statistics from rclone output.
+        
+        Parses the final statistics line from rclone output to extract:
+        - data_transferred: Amount of data transferred (e.g., "23.334M")
+        - elapsed_time: Total elapsed time (e.g., "9.1s")
+        
+        Returns:
+            dict: Statistics with keys 'data_transferred' and 'elapsed_time'
+        """
+        stats = {
+            'data_transferred': None,
+            'elapsed_time': None
+        }
+        
+        # Combine stdout and stderr for searching
+        output = stdout + stderr
+        if not output:
+            return stats
+        
+        lines = output.split('\n')
+        
+        # Look for the final transfer statistics lines
+        # They look like:
+        # "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s"
+        # "Elapsed time:         9.1s"
+        
+        transferred_line = None
+        elapsed_line = None
+        
+        # Search through all lines to find the final statistics (search backwards to get final ones)
+        for line in reversed(lines):
+            line = line.strip()
+            
+            if not transferred_line and 'Transferred:' in line:
+                transferred_line = line
+            
+            if not elapsed_line and 'Elapsed time:' in line:
+                elapsed_line = line
+            
+            if transferred_line and elapsed_line:
+                break
+        
+        # Parse transferred line (e.g., "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s")
+        if transferred_line:
+            try:
+                # Extract the amount transferred (first number before the "/")
+                # Format: "Transferred: XXX / YYY MBytes, ..."
+                parts = transferred_line.split('/')
+                if len(parts) >= 2:
+                    # Get the first part after "Transferred:"
+                    first_part = parts[0].replace('Transferred:', '').strip()
+                    # This should be something like "23.334M" or "23.334"
+                    # Ensure it has a 'B' suffix for clarity (e.g., "23.334M" -> "23.334MB")
+                    if first_part and not first_part.endswith('B'):
+                        first_part = first_part + 'B'
+                    stats['data_transferred'] = first_part
+            except Exception as e:
+                self.logger.debug(f"Failed to parse transferred amount: {e}")
+        
+        # Parse elapsed time line (e.g., "Elapsed time:         9.1s")
+        if elapsed_line:
+            try:
+                # Extract the time value (everything after the colon)
+                time_part = elapsed_line.split(':', 1)[1].strip()
+                stats['elapsed_time'] = time_part
+            except Exception as e:
+                self.logger.debug(f"Failed to parse elapsed time: {e}")
+        
+        return stats
 
     def _extract_key_errors(self, stderr):
         """Extract key error messages from rclone stderr output.
