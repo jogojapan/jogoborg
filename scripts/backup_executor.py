@@ -129,6 +129,7 @@ class BackupExecutor:
         db_compact_max_memory = None
         s3_data_transferred = None
         s3_elapsed_time = None
+        s3_file_count = None
         
         try:
             # Execute pre-command if specified
@@ -182,6 +183,7 @@ class BackupExecutor:
                 if s3_stats:
                     s3_data_transferred = s3_stats.get('data_transferred')
                     s3_elapsed_time = s3_stats.get('elapsed_time')
+                    s3_file_count = s3_stats.get('file_count')
         except Exception as e:
             job_logger.error(f"S3 sync failed: {e}")
             backup_exception = e
@@ -222,6 +224,7 @@ class BackupExecutor:
                 'db_compact_max_memory': db_compact_max_memory,
                 's3_data_transferred': s3_data_transferred,
                 's3_elapsed_time': s3_elapsed_time,
+                's3_file_count': s3_file_count,
             })
         else:
             # Job failed
@@ -854,7 +857,8 @@ Statistics:
         
         # Include S3 sync stats if they exist
         if stats.get('s3_data_transferred') is not None or stats.get('s3_elapsed_time') is not None:
-            message += f"- S3 Sync: {stats.get('s3_data_transferred', 'N/A')} transferred in {stats.get('s3_elapsed_time', 'N/A')}\n"
+            file_count_str = f" ({stats.get('s3_file_count')} files)" if stats.get('s3_file_count') else ""
+            message += f"- S3 Sync: {stats.get('s3_data_transferred', 'N/A')} transferred in {stats.get('s3_elapsed_time', 'N/A')}{file_count_str}\n"
         
         try:
             self.notification_service.send_notification(

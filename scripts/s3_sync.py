@@ -204,16 +204,18 @@ endpoint = {s3_config['endpoint']}
     def _extract_rclone_stats(self, stdout, stderr):
         """Extract transfer statistics from rclone output.
         
-        Parses the final statistics line from rclone output to extract:
+        Parses the final statistics lines from rclone output to extract:
         - data_transferred: Amount of data transferred (e.g., "23.334M")
         - elapsed_time: Total elapsed time (e.g., "9.1s")
+        - file_count: Number of files transferred (e.g., "14")
         
         Returns:
-            dict: Statistics with keys 'data_transferred' and 'elapsed_time'
+            dict: Statistics with keys 'data_transferred', 'elapsed_time', and 'file_count'
         """
         stats = {
             'data_transferred': None,
-            'elapsed_time': None
+            'elapsed_time': None,
+            'file_count': None
         }
         
         # Combine stdout and stderr for searching
@@ -224,32 +226,45 @@ endpoint = {s3_config['endpoint']}
         lines = output.split('\n')
         
         # Look for the final transfer statistics lines
-        # They look like:
-        # "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s"
-        # "Elapsed time:         9.1s"
+        # There are two "Transferred:" lines in rclone output:
+        # 1. Byte transfer: "Transferred:              42.076 KiB / 42.076 KiB, 100%, 40.603 KiB/s, ETA 0s"
+        #    or:            "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s"
+        # 2. File count:    "Transferred:            7 / 7, 100%"
+        # We want both the byte transfer line (which has size units like KiB, MiB, GiB, Bytes, etc)
+        # and the file count line (which has no units, just numbers).
         
-        transferred_line = None
+        transferred_bytes_line = None
+        transferred_files_line = None
         elapsed_line = None
         
         # Search through all lines to find the final statistics (search backwards to get final ones)
         for line in reversed(lines):
-            line = line.strip()
+            line_stripped = line.strip()
             
-            if not transferred_line and 'Transferred:' in line:
-                transferred_line = line
+            # For transferred, distinguish between byte transfer and file count
+            # Byte transfer has size units (KiB, MiB, GiB, Bytes, KB, MB, GB, etc)
+            # File count has no units
+            if 'Transferred:' in line_stripped:
+                has_size_units = any(unit in line_stripped for unit in 
+                                    ['KiB', 'MiB', 'GiB', 'TiB', 'Bytes', 'KB', 'MB', 'GB', 'TB', 'B /'])
+                
+                if not transferred_bytes_line and has_size_units:
+                    transferred_bytes_line = line_stripped
+                elif not transferred_files_line and not has_size_units:
+                    transferred_files_line = line_stripped
             
-            if not elapsed_line and 'Elapsed time:' in line:
-                elapsed_line = line
+            if not elapsed_line and 'Elapsed time:' in line_stripped:
+                elapsed_line = line_stripped
             
-            if transferred_line and elapsed_line:
+            if transferred_bytes_line and transferred_files_line and elapsed_line:
                 break
         
-        # Parse transferred line (e.g., "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s")
-        if transferred_line:
+        # Parse transferred bytes line (e.g., "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s")
+        if transferred_bytes_line:
             try:
                 # Extract the amount transferred (first number before the "/")
                 # Format: "Transferred: XXX / YYY MBytes, ..."
-                parts = transferred_line.split('/')
+                parts = transferred_bytes_line.split('/')
                 if len(parts) >= 2:
                     # Get the first part after "Transferred:"
                     first_part = parts[0].replace('Transferred:', '').strip()
@@ -260,6 +275,19 @@ endpoint = {s3_config['endpoint']}
                     stats['data_transferred'] = first_part
             except Exception as e:
                 self.logger.debug(f"Failed to parse transferred amount: {e}")
+        
+        # Parse transferred files line (e.g., "Transferred:            9 / 14, 64%")
+        if transferred_files_line:
+            try:
+                # Extract the file count (first number before the "/")
+                # Format: "Transferred: XXX / YYY, ZZ%"
+                parts = transferred_files_line.split('/')
+                if len(parts) >= 2:
+                    # Get the first part after "Transferred:"
+                    first_part = parts[0].replace('Transferred:', '').strip()
+                    stats['file_count'] = first_part
+            except Exception as e:
+                self.logger.debug(f"Failed to parse file count: {e}")
         
         # Parse elapsed time line (e.g., "Elapsed time:         9.1s")
         if elapsed_line:
