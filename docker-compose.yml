@@ -40,7 +40,7 @@ services:
       # Web interface credentials
       # NOTE: Quote passwords containing special characters ($, `, etc.) to prevent shell expansion
       - JOGOBORG_WEB_USERNAME=admin
-      - JOGOBORG_WEB_PASSWORD=1resurge
+      - JOGOBORG_WEB_PASSWORD=test_change_me
       
       # Encryption passphrase for storing credentials securely
       - JOGOBORG_GPG_PASSPHRASE=changeme_encryption_key
