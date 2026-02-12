@@ -104,6 +104,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
 
+      // Load current settings to preserve webhook config
+      final currentResponse =
+          await apiService.get('/notifications/edit', token: authService.token);
+      final currentSettings = currentResponse['settings'] ?? {};
+
+      // Merge SMTP settings with existing webhook settings
       final settings = {
         'smtp_config': {
           'host': _smtpHostController.text,
@@ -114,6 +120,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           'recipient_email': _smtpRecipientEmailController.text,
           'security': _smtpSecurity,
         },
+        'webhook_config': currentSettings['webhook_config'] ?? {},
       };
 
       await apiService.put('/notifications', settings,
@@ -146,7 +153,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       final apiService = context.read<ApiService>();
       final authService = context.read<AuthService>();
 
+      // Load current settings to preserve SMTP config
+      final currentResponse =
+          await apiService.get('/notifications/edit', token: authService.token);
+      final currentSettings = currentResponse['settings'] ?? {};
+
+      // Merge webhook settings with existing SMTP settings
       final settings = {
+        'smtp_config': currentSettings['smtp_config'] ?? {},
         'webhook_config': {
           'url': _webhookUrlController.text,
           'token': _webhookTokenController.text,
