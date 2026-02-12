@@ -27,6 +27,7 @@ migrate_working_dir/
 /local_test/borgspace/**
 /local_test/output*
 /local_test/sourcespace/**
+/test_jogoborg_config
 
 # Flutter/Dart/Pub related
 # Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
