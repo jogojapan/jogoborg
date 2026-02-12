@@ -5,7 +5,7 @@ import json
 import sqlite3
 import logging
 import stat
-from datetime import datetime
+from datetime import datetime, timezone
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import subprocess
@@ -277,7 +277,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         
         response = {
             'status': 'healthy',
-            'timestamp': datetime.utcnow().isoformat() + 'Z'
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
         
         self.wfile.write(json.dumps(response).encode())
