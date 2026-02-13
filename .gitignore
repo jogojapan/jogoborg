@@ -71,6 +71,9 @@ build/
 .env.local
 .env.production
 
+# Python venv
+venv/**
+
 # Log files
 *.log
 logs/
