@@ -23,7 +23,7 @@ services:
 
       # For access to docker commands as part of backup jobs (if
       # needed):
-      - /var/run/docker.sock:/var/run/docker.sock:ro,z
+      # - /var/run/docker.sock:/var/run/docker.sock:ro,z
       
       # Borg repositories storage (this will contain your backup repositories)
       - jogoborg_repos:/borgspace
