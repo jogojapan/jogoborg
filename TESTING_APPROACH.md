@@ -44,7 +44,7 @@ Jogoborg is a multi-component backup management system with:
 4. **External Dependencies**:
    - Borg Backup tool
    - Docker CLI (for Docker-based backups)
-   - rclone (for S3 sync)
+   - AWS CLI (for S3 sync)
    - GPG (for encryption)
    - Python 3 with: cryptography, requests, croniter
 

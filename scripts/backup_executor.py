@@ -885,7 +885,7 @@ Error: {error_message}
                 is_error=True
             )
             # Log that notification was sent
-            if 'S3' in error_message or 'rclone' in error_message:
+            if 'S3' in error_message or 'aws' in error_message:
                 self.logger.info(f"Failure notification sent for S3 sync error: {job['name']}")
             else:
                 self.logger.info(f"Failure notification sent for backup failure: {job['name']}")

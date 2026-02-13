@@ -152,7 +152,7 @@ Jogoborg (Borg Backup Management System)
 └── External Dependencies:
     ├── Borg Backup
     ├── Docker CLI (optional)
-    ├── rclone (optional)
+    ├── AWS CLI (optional)
     └── Python packages
 ```
 

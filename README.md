@@ -306,7 +306,7 @@ JOGOBORG_GPG_PASSPHRASE='my$encryption$key'
 #### S3 Sync Failures
 1. Verify S3 credentials and permissions
 2. Check network connectivity
-3. Review rclone configuration in logs
+3. Review AWS CLI configuration and environment in logs
 
 #### Database Connection Issues
 1. Use the "Test Connection" button in the web interface

@@ -2,35 +2,26 @@
 import os
 import subprocess
 import tempfile
-import json
 import logging
 from datetime import datetime
+import time
 
 class S3Syncer:
     def __init__(self):
         self.logger = logging.getLogger('S3Syncer')
-        config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
-        self.rclone_config_dir = os.path.join(config_dir, 'rclone')
-        
-        # Ensure rclone config directory exists
-        os.makedirs(self.rclone_config_dir, exist_ok=True)
 
-    def sync_repository(self, s3_config, repo_path, logger, one_time_full_upload=False):
-        """Sync a Borg repository to S3 using rclone.
+    def sync_repository(self, s3_config, repo_path, logger):
+        """Sync a Borg repository to S3 using AWS CLI.
         
         Args:
             s3_config: S3 configuration dictionary
             repo_path: Path to the repository
             logger: Logger instance
-            one_time_full_upload: If True, skip incremental sync and upload all files
         
         Returns:
             dict: Statistics from the sync operation including data_transferred and elapsed_time
         """
         try:
-            # Create rclone remote configuration
-            remote_name = self._create_rclone_config(s3_config)
-            
             # Determine source and destination paths
             repo_name = os.path.basename(repo_path)
             s3_bucket_raw = s3_config['bucket']
@@ -43,25 +34,25 @@ class S3Syncer:
                     bucket_name = bucket_and_path.split('/')[0]
                     prefix_path = '/'.join(bucket_and_path.split('/')[1:])
                     # Ensure no double slashes in path construction
-                    s3_path = f"{remote_name}:{bucket_name}/{prefix_path.strip('/')}/{repo_name}"
+                    s3_path = f"s3://{bucket_name}/{prefix_path.strip('/')}/{repo_name}"
                 else:
                     # Just bucket name, no prefix
-                    s3_path = f"{remote_name}:{bucket_and_path}/{repo_name}"
+                    s3_path = f"s3://{bucket_and_path}/{repo_name}"
             else:
                 # Assume it's already just the bucket name/path - handle potential slashes
-                s3_path = f"{remote_name}:{s3_bucket_raw.strip('/')}/{repo_name}"
+                s3_path = f"s3://{s3_bucket_raw.strip('/')}/{repo_name}"
             
-            # Run rclone sync with options to only copy modified files
-            stats = self._run_rclone_sync(repo_path, s3_path, logger, one_time_full_upload)
+            # Prepare AWS credentials
+            env = os.environ.copy()
+            env['AWS_ACCESS_KEY_ID'] = s3_config['access_key']
+            env['AWS_SECRET_ACCESS_KEY'] = s3_config['secret_key']
+            if s3_config.get('region'):
+                env['AWS_DEFAULT_REGION'] = s3_config['region']
             
-            # Update last sync timestamp
-            self._update_last_sync_time(repo_path)
+            # Run aws sync
+            stats = self._run_aws_sync(repo_path, s3_path, s3_config, env, logger)
             
             logger.info(f"Successfully synced repository to S3: {s3_path}")
-            
-            # Log if one-time full upload was used
-            if one_time_full_upload:
-                logger.info("One-time full upload was used. The 'one_time_full_upload' flag should be reset to false for the next run.")
             
             return stats
             
@@ -69,172 +60,94 @@ class S3Syncer:
             logger.error(f"S3 sync failed: {e}")
             raise
 
-    def _create_rclone_config(self, s3_config):
-        """Create rclone configuration for the S3 remote."""
-        provider = s3_config.get('provider', 'aws')
-        remote_name = f"s3_{provider}_{hash(json.dumps(s3_config, sort_keys=True)) % 10000}"
-        
-        config_file = os.path.join(self.rclone_config_dir, 'rclone.conf')
-        
-        # Read existing config
-        existing_config = ""
-        if os.path.exists(config_file):
-            with open(config_file, 'r') as f:
-                existing_config = f.read()
-        
-        # Check if this remote already exists
-        if f"[{remote_name}]" in existing_config:
-            return remote_name
-        
-        # Create new remote configuration
-        if provider == 'aws':
-            region = s3_config.get('region', 'us-east-1')
-            # For AWS S3, location_constraint must match the region where the bucket exists
-            # This is required for proper bucket operations and metadata handling
-            location_constraint = region if region != 'us-east-1' else ''
-            remote_config = f"""
-[{remote_name}]
-type = s3
-provider = AWS
-access_key_id = {s3_config['access_key']}
-secret_access_key = {s3_config['secret_key']}
-region = {region}
-location_constraint = {location_constraint}
-storage_class = {s3_config.get('storage_class', 'STANDARD')}
-"""
-        elif provider == 'minio':
-            remote_config = f"""
-[{remote_name}]
-type = s3
-provider = Minio
-access_key_id = {s3_config['access_key']}
-secret_access_key = {s3_config['secret_key']}
-endpoint = {s3_config['endpoint']}
-"""
-        else:
-            raise ValueError(f"Unsupported S3 provider: {provider}")
-        
-        # Append to config file
-        with open(config_file, 'a') as f:
-            f.write(remote_config)
-        
-        # Set secure permissions
-        os.chmod(config_file, 0o600)
-        
-        return remote_name
-
-    def _run_rclone_sync(self, source_path, dest_path, logger, one_time_full_upload=False):
-        """Run rclone sync command with appropriate options.
+    def _run_aws_sync(self, source_path, dest_path, s3_config, env, logger):
+        """Run aws sync command.
         
         Args:
             source_path: Source directory for sync
             dest_path: Destination S3 path
+            s3_config: S3 configuration dictionary
+            env: Environment variables with AWS credentials
             logger: Logger instance
-            one_time_full_upload: If True, skip max-age filter for full upload
         
         Returns:
             dict: Statistics including data_transferred and elapsed_time
         """
         
-        # Get the last sync time
-        last_sync_file = os.path.join(source_path, '.jogoborg_last_sync')
-        last_sync_time = None
-        
-        if os.path.exists(last_sync_file):
-            try:
-                with open(last_sync_file, 'r') as f:
-                    last_sync_time = f.read().strip()
-            except Exception:
-                pass
-        
-        # Build rclone command
+        # Build aws sync command
         cmd = [
-            'rclone', 'sync',
+            'aws', 's3', 'sync',
             source_path, dest_path,
-            '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
-            '--verbose',
-            '--stats', '30s',
-            '--transfers', '4',
-            '--checkers', '8',
+            '--delete',
         ]
         
-        # If we have a last sync time and not doing a one-time full upload, only sync files modified since then
-        if not one_time_full_upload and last_sync_time:
-            cmd.extend(['--max-age', self._calculate_max_age(last_sync_time)])
-            logger.info("Running incremental sync (--max-age enabled)")
-        elif one_time_full_upload:
-            logger.info("Running one-time full upload (--max-age disabled)")
+        # Add region if specified
+        if s3_config.get('region'):
+            cmd.extend(['--region', s3_config['region']])
+        
+        # Add storage class if specified
+        if s3_config.get('storage_class'):
+            cmd.extend(['--storage-class', s3_config['storage_class']])
         
         # Add filters to exclude temporary files
-        cmd.extend([
-            '--exclude', '.jogoborg_*',
-            '--exclude', 'tmp/**',
-            '--exclude', '*.tmp',
-        ])
+        cmd.append('--exclude=.jogoborg_*')
+        cmd.append('--exclude=tmp/*')
+        cmd.append('--exclude=*.tmp')
         
-        logger.info(f"Running rclone sync: {' '.join(cmd)}")
+        logger.info(f"Running aws sync: {' '.join(cmd)}")
         
-        # Execute rclone command
+        # Track elapsed time
+        start_time = time.time()
+        
+        # Execute aws sync command
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            universal_newlines=True
+            universal_newlines=True,
+            env=env
         )
         
-        # Capture both stdout and stderr
+        # Capture output
         stdout, stderr = process.communicate()
         
-        # Extract transfer statistics from stdout before logging
-        stats = self._extract_rclone_stats(stdout, stderr)
+        # Calculate elapsed time
+        elapsed_time = time.time() - start_time
         
-        # Log stdout at appropriate levels based on content
+        # Extract transfer statistics
+        stats = self._extract_aws_sync_stats(stdout, stderr, elapsed_time)
+        
+        # Log stdout
         if stdout:
             for line in stdout.strip().split('\n'):
                 if line.strip():
-                    line_content = line.strip()
-                    # Log INFO and NOTICE messages at info level, others at debug
-                    if 'INFO' in line_content or 'NOTICE' in line_content:
-                        logger.info(f"rclone: {line_content}")
-                    else:
-                        logger.debug(f"rclone: {line_content}")
+                    logger.debug(f"aws sync: {line.strip()}")
         
-        # Only log stderr as errors if they contain actual error keywords
+        # Log stderr
         if stderr:
             for line in stderr.strip().split('\n'):
                 if line.strip():
-                    line_content = line.strip()
-                    if 'ERROR' in line_content.upper() or 'FATAL' in line_content.upper():
-                        logger.error(f"rclone error: {line_content}")
-                    elif 'WARNING' in line_content.upper() or 'WARN' in line_content.upper():
-                        logger.warning(f"rclone warning: {line_content}")
+                    if 'error' in line.lower() or 'failed' in line.lower():
+                        logger.error(f"aws sync error: {line.strip()}")
                     else:
-                        logger.info(f"rclone: {line_content}")
+                        logger.info(f"aws sync: {line.strip()}")
         
         if process.returncode != 0:
-            # Extract key error messages from rclone output for better reporting
-            error_summary = self._extract_key_errors(stderr)
-            error_msg = f"rclone sync failed with return code {process.returncode}"
-            if error_summary:
-                error_msg += f"\n\nKey errors:\n{error_summary}"
-            elif stderr:
-                error_msg += f". Errors: {stderr.strip()}"
+            error_msg = f"aws sync failed with return code {process.returncode}"
+            if stderr:
+                error_msg += f". Error: {stderr.strip()}"
             raise Exception(error_msg)
-        
-        # Add flag to indicate if one-time full upload was used
-        # This tells the caller to reset the one_time_full_upload flag in the job
-        stats['used_one_time_full_upload'] = one_time_full_upload
         
         return stats
 
-    def _extract_rclone_stats(self, stdout, stderr):
-        """Extract transfer statistics from rclone output.
+    def _extract_aws_sync_stats(self, stdout, stderr, elapsed_time):
+        """Extract transfer statistics from aws sync output.
         
-        Parses the final statistics lines from rclone output to extract:
-        - data_transferred: Amount of data transferred (e.g., "23.334M")
-        - elapsed_time: Total elapsed time (e.g., "9.1s")
-        - file_count: Number of files transferred (e.g., "14")
+        Parses aws sync output to extract:
+        - file_count: Number of files transferred (from output lines)
+        - elapsed_time: Total elapsed time
+        - data_transferred: Estimated size of transferred files in human-readable format
         
         Returns:
             dict: Statistics with keys 'data_transferred', 'elapsed_time', and 'file_count'
@@ -245,190 +158,79 @@ endpoint = {s3_config['endpoint']}
             'file_count': None
         }
         
-        # Combine stdout and stderr for searching
-        output = stdout + stderr
-        if not output:
-            return stats
+        # Format elapsed time as a readable string
+        minutes = int(elapsed_time) // 60
+        seconds = int(elapsed_time) % 60
+        if minutes > 0:
+            stats['elapsed_time'] = f"{minutes}m {seconds}s"
+        else:
+            stats['elapsed_time'] = f"{seconds}s"
         
-        lines = output.split('\n')
+        # Parse file operations from stdout to extract file paths and calculate transferred bytes
+        # AWS CLI outputs lines like:
+        # "upload: /local/path/to/file to s3://bucket/path/file"
+        # "delete: s3://bucket/path/file"
+        transferred_bytes = 0
+        file_count = 0
         
-        # Look for the final transfer statistics lines
-        # There are two "Transferred:" lines in rclone output:
-        # 1. Byte transfer: "Transferred:              42.076 KiB / 42.076 KiB, 100%, 40.603 KiB/s, ETA 0s"
-        #    or:            "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s"
-        # 2. File count:    "Transferred:            7 / 7, 100%"
-        # We want both the byte transfer line (which has size units like KiB, MiB, GiB, Bytes, etc)
-        # and the file count line (which has no units, just numbers).
+        if stdout:
+            for line in stdout.split('\n'):
+                line_lower = line.lower()
+                if 'upload:' in line_lower:
+                    # Extract the local file path (between "upload: " and " to s3://")
+                    try:
+                        parts = line.split(' to s3://')
+                        if len(parts) >= 1:
+                            local_path = parts[0].replace('upload:', '').strip()
+                            # Get the file size
+                            if os.path.exists(local_path):
+                                file_size = os.path.getsize(local_path)
+                                transferred_bytes += file_size
+                            file_count += 1
+                    except Exception as e:
+                        self.logger.debug(f"Failed to parse upload line: {e}")
+                        file_count += 1
+                elif 'delete:' in line_lower:
+                    # For deletions, we can't know the exact size, so just count them
+                    file_count += 1
         
-        transferred_bytes_line = None
-        transferred_files_line = None
-        elapsed_line = None
+        if file_count > 0:
+            stats['file_count'] = str(file_count)
         
-        # Search through all lines to find the final statistics (search backwards to get final ones)
-        for line in reversed(lines):
-            line_stripped = line.strip()
-            
-            # For transferred, distinguish between byte transfer and file count
-            # Byte transfer has size units (KiB, MiB, GiB, Bytes, KB, MB, GB, etc)
-            # File count has no units
-            if 'Transferred:' in line_stripped:
-                has_size_units = any(unit in line_stripped for unit in 
-                                    ['KiB', 'MiB', 'GiB', 'TiB', 'Bytes', 'KB', 'MB', 'GB', 'TB', 'B /'])
-                
-                if not transferred_bytes_line and has_size_units:
-                    transferred_bytes_line = line_stripped
-                elif not transferred_files_line and not has_size_units:
-                    transferred_files_line = line_stripped
-            
-            if not elapsed_line and 'Elapsed time:' in line_stripped:
-                elapsed_line = line_stripped
-            
-            if transferred_bytes_line and transferred_files_line and elapsed_line:
-                break
-        
-        # Parse transferred bytes line (e.g., "Transferred:              23.334M / 23.334 MBytes, 100%, 3.956 MBytes/s, ETA 0s")
-        if transferred_bytes_line:
-            try:
-                # Extract the amount transferred (first number before the "/")
-                # Format: "Transferred: XXX / YYY MBytes, ..."
-                parts = transferred_bytes_line.split('/')
-                if len(parts) >= 2:
-                    # Get the first part after "Transferred:"
-                    first_part = parts[0].replace('Transferred:', '').strip()
-                    # This should be something like "23.334M" or "23.334"
-                    # Ensure it has a 'B' suffix for clarity (e.g., "23.334M" -> "23.334MB")
-                    if first_part and not first_part.endswith('B'):
-                        first_part = first_part + 'B'
-                    stats['data_transferred'] = first_part
-            except Exception as e:
-                self.logger.debug(f"Failed to parse transferred amount: {e}")
-        
-        # Parse transferred files line (e.g., "Transferred:            9 / 14, 64%")
-        if transferred_files_line:
-            try:
-                # Extract the file count (first number before the "/")
-                # Format: "Transferred: XXX / YYY, ZZ%"
-                parts = transferred_files_line.split('/')
-                if len(parts) >= 2:
-                    # Get the first part after "Transferred:"
-                    first_part = parts[0].replace('Transferred:', '').strip()
-                    stats['file_count'] = first_part
-            except Exception as e:
-                self.logger.debug(f"Failed to parse file count: {e}")
-        
-        # Parse elapsed time line (e.g., "Elapsed time:         9.1s")
-        if elapsed_line:
-            try:
-                # Extract the time value (everything after the colon)
-                time_part = elapsed_line.split(':', 1)[1].strip()
-                stats['elapsed_time'] = time_part
-            except Exception as e:
-                self.logger.debug(f"Failed to parse elapsed time: {e}")
+        # Format estimated data transferred
+        if transferred_bytes > 0 or file_count > 0:
+            if transferred_bytes > 0:
+                stats['data_transferred'] = self._format_bytes(transferred_bytes)
+            else:
+                # If we only had deletes and no uploads, show file count
+                stats['data_transferred'] = f"{file_count} file(s)"
         
         return stats
 
-    def _extract_key_errors(self, stderr):
-        """Extract key error messages from rclone stderr output.
+    def _format_bytes(self, bytes_value):
+        """Format bytes to human-readable format.
         
-        Filters out duplicate errors and retry attempts, keeping only the most
-        important error messages for user notification.
+        Args:
+            bytes_value: Number of bytes
+            
+        Returns:
+            str: Formatted string (e.g., "1.5 MB", "2.3 GB")
         """
-        key_errors = []
-        seen_errors = set()  # Track unique errors to avoid duplicates
+        if bytes_value is None:
+            return None
         
-        if not stderr:
-            return ""
+        units = ['B', 'KB', 'MB', 'GB', 'TB']
+        size = float(bytes_value)
+        unit_index = 0
         
-        lines = stderr.split('\n')
+        while size >= 1024 and unit_index < len(units) - 1:
+            size /= 1024
+            unit_index += 1
         
-        for line in lines:
-            line = line.strip()
-            
-            # Look for ERROR lines
-            if not line or 'ERROR' not in line:
-                continue
-            
-            # Skip retry attempt lines - these are just informational
-            if 'Attempt' in line and 'failed with' in line:
-                continue
-            
-            # Extract the part after 'ERROR'
-            if 'ERROR' in line:
-                # Split on 'ERROR' and get everything after it
-                error_part = line.split('ERROR', 1)[1].strip()
-                # Clean up leading colons and spaces (handles ': : ' patterns)
-                error_part = error_part.lstrip(': ').lstrip()
-
-                
-                # Check for specific error types that are important to report
-                important_error_types = [
-                    'BucketRegionError', 'AccessDenied', 'InvalidAccessKeyId', 
-                    'SignatureDoesNotMatch', 'NoSuchBucket', 'NoSuchKey',
-                    'Unauthorized'
-                ]
-                
-                # Check if this is an important error type
-                is_important = any(err_type in error_part for err_type in important_error_types)
-                
-                # Also flag common S3 permission/access errors
-                if not is_important:
-                    is_important = any(phrase in error_part.lower() for phrase in 
-                                      ['not authorized', 'denied', 'permission', 'credentials',
-                                       'failed to update region', 'status code: 403'])
-                
-                if is_important:
-                    # Try to extract a concise error message
-                    # For multi-line errors in a single line, just take the key part
-                    if len(error_part) > 150:
-                        # For very long error messages, try to extract the key bit
-                        if 'BucketRegionError' in error_part:
-                            error_part = 'BucketRegionError: ' + error_part.split('BucketRegionError')[-1].split('\n')[0]
-                        elif 'AccessDenied' in error_part:
-                            error_part = 'AccessDenied: ' + error_part.split('AccessDenied')[-1].split('\n')[0]
-                    
-                    # Avoid adding duplicate errors
-                    if error_part not in seen_errors:
-                        key_errors.append(error_part)
-                        seen_errors.add(error_part)
-        
-        # If we found key errors, format them nicely
-        if key_errors:
-            # Remove duplicates while preserving order
-            unique_errors = []
-            for err in key_errors:
-                if err not in unique_errors:
-                    unique_errors.append(err)
-            
-            # Format as a bulleted list, limiting to top 5 errors
-            return '\n- '.join([''] + unique_errors[:5])
-        
-        return ""
-
-    def _calculate_max_age(self, last_sync_time):
-        """Calculate max-age parameter for rclone based on last sync time."""
-        try:
-            last_sync = datetime.fromisoformat(last_sync_time.replace('Z', '+00:00'))
-            now = datetime.now(last_sync.tzinfo)
-            diff = now - last_sync
-            
-            # Add some buffer time to ensure we don't miss files
-            total_seconds = int(diff.total_seconds()) + 300  # Add 5 minutes buffer
-            
-            return f"{total_seconds}s"
-            
-        except Exception:
-            # If we can't parse the time, sync everything
-            return "1000d"  # 1000 days should cover everything
-
-    def _update_last_sync_time(self, repo_path):
-        """Update the last sync timestamp file."""
-        last_sync_file = os.path.join(repo_path, '.jogoborg_last_sync')
-        
-        try:
-            with open(last_sync_file, 'w') as f:
-                f.write(datetime.utcnow().isoformat() + 'Z')
-        except Exception as e:
-            self.logger.warning(f"Failed to update last sync time: {e}")
+        if unit_index == 0:
+            return f"{int(size)} {units[unit_index]}"
+        else:
+            return f"{size:.1f} {units[unit_index]}"
 
     def test_s3_connection(self, s3_config):
         """Test S3 connection and credentials, including write permissions.
@@ -439,9 +241,7 @@ endpoint = {s3_config['endpoint']}
         3. Region configuration is correct
         """
         try:
-            remote_name = self._create_rclone_config(s3_config)
-            
-            # Extract bucket name and prefix from bucket field
+            # Extract bucket name from bucket field
             bucket_raw = s3_config['bucket']
             if bucket_raw.startswith('s3://'):
                 bucket_and_path = bucket_raw[5:]
@@ -456,41 +256,32 @@ endpoint = {s3_config['endpoint']}
                 bucket_name = parts[0]
                 prefix_path = '/'.join(parts[1:]) if len(parts) > 1 else ''
             
-            # Build S3 path with prefix if needed
-            if prefix_path:
-                s3_test_path = f"{remote_name}:{bucket_name}/{prefix_path.strip('/')}"
-            else:
-                s3_test_path = f"{remote_name}:{bucket_name}"
-            
-            config_file = os.path.join(self.rclone_config_dir, 'rclone.conf')
+            # Prepare AWS credentials
+            env = os.environ.copy()
+            env['AWS_ACCESS_KEY_ID'] = s3_config['access_key']
+            env['AWS_SECRET_ACCESS_KEY'] = s3_config['secret_key']
+            if s3_config.get('region'):
+                env['AWS_DEFAULT_REGION'] = s3_config['region']
             
             # Step 1: Test read access by listing bucket contents
             self.logger.info(f"Testing S3 read access...")
             list_cmd = [
-                'rclone', 'lsd',
-                s3_test_path,
-                '--config', config_file,
-                '--max-depth', '1'
+                'aws', 's3', 'ls',
+                f"s3://{bucket_name}",
             ]
+            
+            if s3_config.get('region'):
+                list_cmd.extend(['--region', s3_config['region']])
             
             result = subprocess.run(
                 list_cmd,
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=30,
+                env=env
             )
             
-            self.logger.info(f"rclone lsd returned with code: {result.returncode}")
-            
-            # Check for region mismatch
-            if result.stderr and "Switched region to" in result.stderr:
-                self.logger.error(f"Region mismatch detected: {result.stderr}")
-                import re
-                match = re.search(r'Switched region to "([^"]+)" from "([^"]+)"', result.stderr)
-                if match:
-                    actual_region = match.group(1)
-                    specified_region = match.group(2)
-                    return False, f"Region mismatch: bucket is in {actual_region}, but you specified {specified_region}"
+            self.logger.info(f"aws s3 ls returned with code: {result.returncode}")
             
             if result.returncode != 0:
                 stderr_lines = result.stderr.strip().split('\n')
@@ -510,20 +301,29 @@ endpoint = {s3_config['endpoint']}
                 temp_local_path = f.name
             
             try:
+                # Build S3 test path
+                if prefix_path:
+                    s3_test_file = f"s3://{bucket_name}/{prefix_path.strip('/')}/{test_file_name}"
+                else:
+                    s3_test_file = f"s3://{bucket_name}/{test_file_name}"
+                
                 # Upload test file
                 upload_cmd = [
-                    'rclone', 'copyto',
+                    'aws', 's3', 'cp',
                     temp_local_path,
-                    f"{s3_test_path}/{test_file_name}",
-                    '--config', config_file,
+                    s3_test_file,
                 ]
+                
+                if s3_config.get('region'):
+                    upload_cmd.extend(['--region', s3_config['region']])
                 
                 self.logger.info(f"Uploading test file: {test_file_name}")
                 result = subprocess.run(
                     upload_cmd,
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
+                    env=env
                 )
                 
                 if result.returncode != 0:
@@ -532,9 +332,9 @@ endpoint = {s3_config['endpoint']}
                     self.logger.error(f"S3 write test failed: {error_msg}")
                     
                     # Check for permission errors
-                    if 'AccessDenied' in result.stderr or 's3:PutObject' in result.stderr:
-                        return False, f"S3 write permission denied: User does not have s3:PutObject permission. {error_msg}"
-                    elif '403' in result.stderr or 'Forbidden' in result.stderr:
+                    if 'AccessDenied' in result.stderr or 'Forbidden' in result.stderr:
+                        return False, f"S3 permission denied: {error_msg}"
+                    elif '403' in result.stderr:
                         return False, f"S3 permission denied (403): {error_msg}"
                     else:
                         return False, f"S3 write failed: {error_msg}"
@@ -543,17 +343,20 @@ endpoint = {s3_config['endpoint']}
                 
                 # Delete test file
                 delete_cmd = [
-                    'rclone', 'delete',
-                    f"{s3_test_path}/{test_file_name}",
-                    '--config', config_file,
+                    'aws', 's3', 'rm',
+                    s3_test_file,
                 ]
+                
+                if s3_config.get('region'):
+                    delete_cmd.extend(['--region', s3_config['region']])
                 
                 self.logger.info(f"Deleting test file...")
                 result = subprocess.run(
                     delete_cmd,
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
+                    env=env
                 )
                 
                 if result.returncode != 0:
@@ -581,29 +384,59 @@ endpoint = {s3_config['endpoint']}
     def list_backups(self, s3_config, repo_name=None):
         """List backups available in S3."""
         try:
-            remote_name = self._create_rclone_config(s3_config)
-            bucket = s3_config['bucket']
-            
-            if repo_name:
-                path = f"{remote_name}:{bucket}/{repo_name}"
+            # Extract bucket name and prefix from bucket field
+            bucket_raw = s3_config['bucket']
+            if bucket_raw.startswith('s3://'):
+                bucket_and_path = bucket_raw[5:]
+                if '/' in bucket_and_path:
+                    bucket_name = bucket_and_path.split('/')[0]
+                    prefix_path = '/'.join(bucket_and_path.split('/')[1:])
+                else:
+                    bucket_name = bucket_and_path
+                    prefix_path = ''
             else:
-                path = f"{remote_name}:{bucket}"
+                parts = bucket_raw.split('/')
+                bucket_name = parts[0]
+                prefix_path = '/'.join(parts[1:]) if len(parts) > 1 else ''
+            
+            # Prepare AWS credentials
+            env = os.environ.copy()
+            env['AWS_ACCESS_KEY_ID'] = s3_config['access_key']
+            env['AWS_SECRET_ACCESS_KEY'] = s3_config['secret_key']
+            if s3_config.get('region'):
+                env['AWS_DEFAULT_REGION'] = s3_config['region']
+            
+            # Build S3 path
+            if repo_name:
+                if prefix_path:
+                    s3_path = f"s3://{bucket_name}/{prefix_path.strip('/')}/{repo_name}"
+                else:
+                    s3_path = f"s3://{bucket_name}/{repo_name}"
+            else:
+                if prefix_path:
+                    s3_path = f"s3://{bucket_name}/{prefix_path.strip('/')}"
+                else:
+                    s3_path = f"s3://{bucket_name}"
             
             cmd = [
-                'rclone', 'lsl',
-                path,
-                '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
+                'aws', 's3', 'ls',
+                s3_path,
+                '--recursive',
             ]
+            
+            if s3_config.get('region'):
+                cmd.extend(['--region', s3_config['region']])
             
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=60,
+                env=env
             )
             
             if result.returncode == 0:
-                return self._parse_rclone_list_output(result.stdout)
+                return self._parse_aws_list_output(result.stdout)
             else:
                 raise Exception(f"Failed to list S3 backups: {result.stderr}")
                 
@@ -611,32 +444,36 @@ endpoint = {s3_config['endpoint']}
             self.logger.error(f"Failed to list S3 backups: {e}")
             raise
 
-    def _parse_rclone_list_output(self, output):
-        """Parse rclone lsl output into structured data."""
+    def _parse_aws_list_output(self, output):
+        """Parse aws s3 ls output into structured data."""
         files = []
         
         for line in output.strip().split('\n'):
             if not line.strip():
                 continue
                 
+            # Format: "2023-10-15 14:30:45     1234567 filename"
             parts = line.strip().split(None, 3)
             if len(parts) >= 4:
-                size = int(parts[0])
-                date_str = f"{parts[1]} {parts[2]}"
-                filename = parts[3]
-                
-                files.append({
-                    'name': filename,
-                    'size': size,
-                    'modified': date_str,
-                })
+                try:
+                    date_str = f"{parts[0]} {parts[1]}"
+                    size = int(parts[2])
+                    filename = parts[3]
+                    
+                    files.append({
+                        'name': filename,
+                        'size': size,
+                        'modified': date_str,
+                    })
+                except (ValueError, IndexError):
+                    continue
         
         return files
 
     def restore_from_s3(self, s3_config, repo_name, local_path, logger):
         """Restore a repository from S3 to local storage."""
         try:
-            remote_name = self._create_rclone_config(s3_config)
+            # Extract bucket name and prefix from bucket field
             s3_bucket_raw = s3_config['bucket']
             
             # Parse bucket field to handle s3:// URLs and extract bucket name and prefix
@@ -647,26 +484,31 @@ endpoint = {s3_config['endpoint']}
                     bucket_name = bucket_and_path.split('/')[0]
                     prefix_path = '/'.join(bucket_and_path.split('/')[1:])
                     # Ensure no double slashes in path construction
-                    s3_path = f"{remote_name}:{bucket_name}/{prefix_path.strip('/')}/{repo_name}"
+                    s3_path = f"s3://{bucket_name}/{prefix_path.strip('/')}/{repo_name}"
                 else:
                     # Just bucket name, no prefix
-                    s3_path = f"{remote_name}:{bucket_and_path}/{repo_name}"
+                    s3_path = f"s3://{bucket_and_path}/{repo_name}"
             else:
                 # Assume it's already just the bucket name/path - handle potential slashes
-                s3_path = f"{remote_name}:{s3_bucket_raw.strip('/')}/{repo_name}"
+                s3_path = f"s3://{s3_bucket_raw.strip('/')}/{repo_name}"
             
             # Ensure local directory exists
             os.makedirs(local_path, exist_ok=True)
             
+            # Prepare AWS credentials
+            env = os.environ.copy()
+            env['AWS_ACCESS_KEY_ID'] = s3_config['access_key']
+            env['AWS_SECRET_ACCESS_KEY'] = s3_config['secret_key']
+            if s3_config.get('region'):
+                env['AWS_DEFAULT_REGION'] = s3_config['region']
+            
             cmd = [
-                'rclone', 'sync',
+                'aws', 's3', 'sync',
                 s3_path, local_path,
-                '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
-                '--verbose',
-                '--stats', '30s',
-                '--transfers', '4',
-                '--checkers', '8',
             ]
+            
+            if s3_config.get('region'):
+                cmd.extend(['--region', s3_config['region']])
             
             logger.info(f"Restoring from S3: {s3_path} -> {local_path}")
             
@@ -675,18 +517,19 @@ endpoint = {s3_config['endpoint']}
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                universal_newlines=True
+                universal_newlines=True,
+                env=env
             )
             
             # Log output in real-time
             for line in iter(process.stdout.readline, ''):
                 if line.strip():
-                    logger.debug(f"rclone restore: {line.strip()}")
+                    logger.debug(f"aws sync restore: {line.strip()}")
             
             process.wait()
             
             if process.returncode != 0:
-                raise Exception(f"rclone restore failed with return code {process.returncode}")
+                raise Exception(f"aws sync restore failed with return code {process.returncode}")
             
             logger.info("Repository restored successfully from S3")
             

@@ -71,7 +71,7 @@ Your project consists of:
 4. **External Dependencies**:
    - Borg Backup tool
    - Docker CLI (optional)
-   - rclone (optional)
+   - AWS CLI (optional)
    - GPG, Python 3, SQLite
 
 ### Current Testing Limitations

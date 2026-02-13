@@ -55,7 +55,6 @@ RUN apt-get clean && \
     zip \
     python3 \
     borgbackup \
-    rclone \
     gnupg \
     sqlite3 \
     postgresql-client \
@@ -91,6 +90,7 @@ COPY . .
 
 # Install Python dependencies for backend services
 RUN pip3 install --break-system-packages \
+    awscli \
     cryptography \
     requests \
     croniter
