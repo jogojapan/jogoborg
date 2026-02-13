@@ -225,12 +225,21 @@ class _JobDialogState extends State<JobDialog> {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
     final textColor = AppColors.primaryText;
+    
+    // Get screen dimensions and calculate responsive dialog size
+    final screenSize = MediaQuery.of(context).size;
+    final maxWidth = (screenSize.width * 0.9).clamp(300.0, 800.0);
+    final maxHeight = (screenSize.height * 0.85).clamp(400.0, 700.0);
 
     return Dialog(
       backgroundColor: backgroundColor,
       child: Container(
-        width: 800,
-        height: 700,
+        width: maxWidth,
+        height: maxHeight,
+        constraints: BoxConstraints(
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+        ),
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
@@ -576,14 +585,19 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
     final textColor = AppColors.primaryText;
+    
+    // Get screen dimensions for responsive sizing
+    final screenSize = MediaQuery.of(context).size;
+    final dialogWidth = (screenSize.width * 0.8).clamp(300.0, 500.0);
+    final dialogHeight = (screenSize.height * 0.7).clamp(300.0, 400.0);
 
     return AlertDialog(
       backgroundColor: backgroundColor,
       title: Text('Select Source Directory',
           style: TextStyle(color: AppColors.inputText)),
       content: SizedBox(
-        width: 500,
-        height: 400,
+        width: dialogWidth,
+        height: dialogHeight,
         child: Column(
           children: [
             // Current path and navigation
@@ -748,14 +762,19 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
+    
+    // Get screen dimensions for responsive sizing
+    final screenSize = MediaQuery.of(context).size;
+    final dialogWidth = (screenSize.width * 0.75).clamp(300.0, 400.0);
 
     return AlertDialog(
       backgroundColor: backgroundColor,
       title: Text('S3 Configuration',
           style: TextStyle(color: AppColors.inputText)),
-      content: SizedBox(
-        width: 400,
-        child: Column(
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: dialogWidth,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
@@ -851,6 +870,7 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               ),
           ],
         ),
+        ),
       ),
       actions: [
         TextButton(
@@ -923,14 +943,19 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
+    
+    // Get screen dimensions for responsive sizing
+    final screenSize = MediaQuery.of(context).size;
+    final dialogWidth = (screenSize.width * 0.75).clamp(300.0, 500.0);
 
     return AlertDialog(
       backgroundColor: backgroundColor,
       title: Text('Configure Commands',
           style: TextStyle(color: AppColors.inputText)),
-      content: SizedBox(
-        width: 500,
-        child: Column(
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: dialogWidth,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -976,6 +1001,7 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
               style: TextStyle(color: AppColors.accentOrange, fontSize: 12),
             ),
           ],
+        ),
         ),
       ),
       actions: [
@@ -1066,16 +1092,21 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
+    
+    // Get screen dimensions for responsive sizing
+    final screenSize = MediaQuery.of(context).size;
+    final dialogWidth = (screenSize.width * 0.75).clamp(300.0, 400.0);
 
     return AlertDialog(
       backgroundColor: backgroundColor,
       title: Text('Database Configuration',
           style: TextStyle(color: AppColors.inputText)),
-      content: SizedBox(
-        width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+      content: SingleChildScrollView(
+        child: SizedBox(
+          width: dialogWidth,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             DropdownButtonFormField<String>(
               initialValue: _dbType,
               style: TextStyle(color: AppColors.inputText),
@@ -1179,6 +1210,7 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
               child: const Text('Test Connection'),
             ),
           ],
+        ),
         ),
       ),
       actions: [
