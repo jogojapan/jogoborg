@@ -79,6 +79,9 @@ class S3Syncer:
         # Create new remote configuration
         if provider == 'aws':
             region = s3_config.get('region', 'us-east-1')
+            # For AWS S3, location_constraint must match the region where the bucket exists
+            # This is required for proper bucket operations and metadata handling
+            location_constraint = region if region != 'us-east-1' else ''
             remote_config = f"""
 [{remote_name}]
 type = s3
@@ -86,6 +89,7 @@ provider = AWS
 access_key_id = {s3_config['access_key']}
 secret_access_key = {s3_config['secret_key']}
 region = {region}
+location_constraint = {location_constraint}
 storage_class = {s3_config.get('storage_class', 'STANDARD')}
 """
         elif provider == 'minio':
@@ -404,46 +408,60 @@ endpoint = {s3_config['endpoint']}
             self.logger.warning(f"Failed to update last sync time: {e}")
 
     def test_s3_connection(self, s3_config):
-        """Test S3 connection and credentials."""
+        """Test S3 connection and credentials, including write permissions.
+        
+        This test verifies:
+        1. Bucket exists and is accessible (read access)
+        2. User has write permissions (by creating and deleting a test file)
+        3. Region configuration is correct
+        """
         try:
             remote_name = self._create_rclone_config(s3_config)
             
-            # Extract just the bucket name from the bucket field
-            # (bucket field might contain s3:// prefix or path suffix)
+            # Extract bucket name and prefix from bucket field
             bucket_raw = s3_config['bucket']
             if bucket_raw.startswith('s3://'):
-                bucket_name = bucket_raw[5:].split('/')[0]
+                bucket_and_path = bucket_raw[5:]
+                if '/' in bucket_and_path:
+                    bucket_name = bucket_and_path.split('/')[0]
+                    prefix_path = '/'.join(bucket_and_path.split('/')[1:])
+                else:
+                    bucket_name = bucket_and_path
+                    prefix_path = ''
             else:
-                bucket_name = bucket_raw.split('/')[0]
+                parts = bucket_raw.split('/')
+                bucket_name = parts[0]
+                prefix_path = '/'.join(parts[1:]) if len(parts) > 1 else ''
             
-            # Test with rclone lsd to verify bucket exists and is accessible
-            # This will fail if the bucket doesn't exist or wrong region/credentials
-            cmd = [
+            # Build S3 path with prefix if needed
+            if prefix_path:
+                s3_test_path = f"{remote_name}:{bucket_name}/{prefix_path.strip('/')}"
+            else:
+                s3_test_path = f"{remote_name}:{bucket_name}"
+            
+            config_file = os.path.join(self.rclone_config_dir, 'rclone.conf')
+            
+            # Step 1: Test read access by listing bucket contents
+            self.logger.info(f"Testing S3 read access...")
+            list_cmd = [
                 'rclone', 'lsd',
-                f"{remote_name}:{bucket_name}",
-                '--config', os.path.join(self.rclone_config_dir, 'rclone.conf'),
+                s3_test_path,
+                '--config', config_file,
                 '--max-depth', '1'
             ]
             
-            self.logger.info(f"Testing S3 connection with: {' '.join(cmd)}")
-            
             result = subprocess.run(
-                cmd,
+                list_cmd,
                 capture_output=True,
                 text=True,
                 timeout=30
             )
             
-            self.logger.info(f"rclone returned with code: {result.returncode}")
-            if result.stdout:
-                self.logger.info(f"rclone stdout: {result.stdout}")
-            if result.stderr:
-                self.logger.info(f"rclone stderr: {result.stderr}")
+            self.logger.info(f"rclone lsd returned with code: {result.returncode}")
             
-            # Check if rclone had to switch regions (indicates wrong region was specified)
+            # Check for region mismatch
             if result.stderr and "Switched region to" in result.stderr:
                 self.logger.error(f"Region mismatch detected: {result.stderr}")
-                # Extract the actual region from the message
                 import re
                 match = re.search(r'Switched region to "([^"]+)" from "([^"]+)"', result.stderr)
                 if match:
@@ -451,14 +469,84 @@ endpoint = {s3_config['endpoint']}
                     specified_region = match.group(2)
                     return False, f"Region mismatch: bucket is in {actual_region}, but you specified {specified_region}"
             
-            if result.returncode == 0:
-                return True, "S3 connection successful"
-            else:
-                # Extract key error message from stderr
+            if result.returncode != 0:
                 stderr_lines = result.stderr.strip().split('\n')
                 error_msg = stderr_lines[-1] if stderr_lines else result.stderr
-                self.logger.error(f"S3 test failed with code {result.returncode}: {error_msg}")
-                return False, f"S3 connection failed: {error_msg}"
+                self.logger.error(f"S3 read access test failed: {error_msg}")
+                return False, f"S3 read access failed: {error_msg}"
+            
+            # Step 2: Test write access by creating and deleting a test file
+            self.logger.info(f"Testing S3 write access...")
+            
+            # Create a temporary test file
+            test_file_name = f".jogoborg_test_{int(datetime.now().timestamp())}"
+            test_content = "jogoborg-s3-test"
+            
+            with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+                f.write(test_content)
+                temp_local_path = f.name
+            
+            try:
+                # Upload test file
+                upload_cmd = [
+                    'rclone', 'copyto',
+                    temp_local_path,
+                    f"{s3_test_path}/{test_file_name}",
+                    '--config', config_file,
+                ]
+                
+                self.logger.info(f"Uploading test file: {test_file_name}")
+                result = subprocess.run(
+                    upload_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode != 0:
+                    stderr_lines = result.stderr.strip().split('\n')
+                    error_msg = stderr_lines[-1] if stderr_lines else result.stderr
+                    self.logger.error(f"S3 write test failed: {error_msg}")
+                    
+                    # Check for permission errors
+                    if 'AccessDenied' in result.stderr or 's3:PutObject' in result.stderr:
+                        return False, f"S3 write permission denied: User does not have s3:PutObject permission. {error_msg}"
+                    elif '403' in result.stderr or 'Forbidden' in result.stderr:
+                        return False, f"S3 permission denied (403): {error_msg}"
+                    else:
+                        return False, f"S3 write failed: {error_msg}"
+                
+                self.logger.info(f"Test file uploaded successfully")
+                
+                # Delete test file
+                delete_cmd = [
+                    'rclone', 'delete',
+                    f"{s3_test_path}/{test_file_name}",
+                    '--config', config_file,
+                ]
+                
+                self.logger.info(f"Deleting test file...")
+                result = subprocess.run(
+                    delete_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                if result.returncode != 0:
+                    self.logger.warning(f"Failed to delete test file (non-critical): {result.stderr}")
+                    # Don't fail the test if deletion fails, as it's not critical
+                else:
+                    self.logger.info(f"Test file deleted successfully")
+                
+                return True, "S3 connection successful with read and write access verified"
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_local_path)
+                except Exception as e:
+                    self.logger.debug(f"Failed to delete temporary file: {e}")
                 
         except subprocess.TimeoutExpired:
             self.logger.error("S3 connection test timed out")
