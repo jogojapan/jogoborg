@@ -15,8 +15,14 @@ class S3Syncer:
         # Ensure rclone config directory exists
         os.makedirs(self.rclone_config_dir, exist_ok=True)
 
-    def sync_repository(self, s3_config, repo_path, logger):
+    def sync_repository(self, s3_config, repo_path, logger, one_time_full_upload=False):
         """Sync a Borg repository to S3 using rclone.
+        
+        Args:
+            s3_config: S3 configuration dictionary
+            repo_path: Path to the repository
+            logger: Logger instance
+            one_time_full_upload: If True, skip incremental sync and upload all files
         
         Returns:
             dict: Statistics from the sync operation including data_transferred and elapsed_time
@@ -46,12 +52,16 @@ class S3Syncer:
                 s3_path = f"{remote_name}:{s3_bucket_raw.strip('/')}/{repo_name}"
             
             # Run rclone sync with options to only copy modified files
-            stats = self._run_rclone_sync(repo_path, s3_path, logger)
+            stats = self._run_rclone_sync(repo_path, s3_path, logger, one_time_full_upload)
             
             # Update last sync timestamp
             self._update_last_sync_time(repo_path)
             
             logger.info(f"Successfully synced repository to S3: {s3_path}")
+            
+            # Log if one-time full upload was used
+            if one_time_full_upload:
+                logger.info("One-time full upload was used. The 'one_time_full_upload' flag should be reset to false for the next run.")
             
             return stats
             
@@ -113,8 +123,14 @@ endpoint = {s3_config['endpoint']}
         
         return remote_name
 
-    def _run_rclone_sync(self, source_path, dest_path, logger):
+    def _run_rclone_sync(self, source_path, dest_path, logger, one_time_full_upload=False):
         """Run rclone sync command with appropriate options.
+        
+        Args:
+            source_path: Source directory for sync
+            dest_path: Destination S3 path
+            logger: Logger instance
+            one_time_full_upload: If True, skip max-age filter for full upload
         
         Returns:
             dict: Statistics including data_transferred and elapsed_time
@@ -142,9 +158,12 @@ endpoint = {s3_config['endpoint']}
             '--checkers', '8',
         ]
         
-        # If we have a last sync time, only sync files modified since then
-        if last_sync_time:
+        # If we have a last sync time and not doing a one-time full upload, only sync files modified since then
+        if not one_time_full_upload and last_sync_time:
             cmd.extend(['--max-age', self._calculate_max_age(last_sync_time)])
+            logger.info("Running incremental sync (--max-age enabled)")
+        elif one_time_full_upload:
+            logger.info("Running one-time full upload (--max-age disabled)")
         
         # Add filters to exclude temporary files
         cmd.extend([
@@ -202,6 +221,10 @@ endpoint = {s3_config['endpoint']}
             elif stderr:
                 error_msg += f". Errors: {stderr.strip()}"
             raise Exception(error_msg)
+        
+        # Add flag to indicate if one-time full upload was used
+        # This tells the caller to reset the one_time_full_upload flag in the job
+        stats['used_one_time_full_upload'] = one_time_full_upload
         
         return stats
 

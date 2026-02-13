@@ -32,6 +32,7 @@ class _JobDialogState extends State<JobDialog> {
 
   bool isEditing = false;
   bool isSaving = false;
+  bool oneTimeFullUpload = false;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _JobDialogState extends State<JobDialog> {
       _preCommandController.text = job['pre_command'] ?? '';
       _postCommandController.text = job['post_command'] ?? '';
       _repositoryPassphraseController.text = job['repository_passphrase'] ?? '';
+      oneTimeFullUpload = job['one_time_full_upload'] ?? false;
 
       if (job['source_directories'] is List) {
         sourceDirs = List<String>.from(job['source_directories']);
@@ -128,6 +130,7 @@ class _JobDialogState extends State<JobDialog> {
         'repository_passphrase': _repositoryPassphraseController.text,
         's3_config': s3Config,
         'db_config': dbConfig,
+        'one_time_full_upload': oneTimeFullUpload,
       };
 
       if (isEditing) {
@@ -444,6 +447,26 @@ class _JobDialogState extends State<JobDialog> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // One-time full upload option
+                    Card(
+                      child: CheckboxListTile(
+                        title: Text(
+                          'One-Time Full Upload',
+                          style: TextStyle(color: textColor),
+                        ),
+                        subtitle: Text(
+                          'Skip incremental sync on next run (useful after major changes)',
+                          style: TextStyle(
+                              color: AppColors.secondaryText, fontSize: 12),
+                        ),
+                        value: oneTimeFullUpload,
+                        onChanged: (value) {
+                          setState(() => oneTimeFullUpload = value ?? false);
+                        },
+                      ),
                     ),
                     const SizedBox(height: 16),
 
