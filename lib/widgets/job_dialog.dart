@@ -33,7 +33,6 @@ class _JobDialogState extends State<JobDialog> {
   bool isEditing = false;
   bool isSaving = false;
 
-
   @override
   void initState() {
     super.initState();
@@ -223,7 +222,7 @@ class _JobDialogState extends State<JobDialog> {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
     final textColor = AppColors.primaryText;
-    
+
     // Get screen dimensions and calculate responsive dialog size
     final screenSize = MediaQuery.of(context).size;
     final maxWidth = (screenSize.width * 0.9).clamp(300.0, 800.0);
@@ -563,7 +562,7 @@ class _DirectoryPickerDialogState extends State<_DirectoryPickerDialog> {
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
     final textColor = AppColors.primaryText;
-    
+
     // Get screen dimensions for responsive sizing
     final screenSize = MediaQuery.of(context).size;
     final dialogWidth = (screenSize.width * 0.8).clamp(300.0, 500.0);
@@ -651,6 +650,9 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
   final _regionController = TextEditingController();
   final _accessKeyController = TextEditingController();
   final _secretKeyController = TextEditingController();
+  final _maxConcurrentRequestsController = TextEditingController();
+  final _maxQueueSizeController = TextEditingController();
+  final _multipartChunksizeController = TextEditingController();
   String _storageClass = 'STANDARD';
   String _provider = 'aws';
   bool _isTesting = false;
@@ -667,9 +669,31 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
       _secretKeyController.text = config['secret_key'] ?? '';
       _storageClass = config['storage_class'] ?? 'STANDARD';
       _provider = config['provider'] ?? 'aws';
+      _maxConcurrentRequestsController.text =
+          (config['max_concurrent_requests'] ?? 10).toString();
+      _maxQueueSizeController.text =
+          (config['max_queue_size'] ?? 1000).toString();
+      _multipartChunksizeController.text =
+          config['multipart_chunksize'] ?? '8MB';
     } else {
       _regionController.text = 'us-east-1';
+      _maxConcurrentRequestsController.text = '10';
+      _maxQueueSizeController.text = '1000';
+      _multipartChunksizeController.text = '8MB';
     }
+  }
+
+  @override
+  void dispose() {
+    _endpointController.dispose();
+    _bucketController.dispose();
+    _regionController.dispose();
+    _accessKeyController.dispose();
+    _secretKeyController.dispose();
+    _maxConcurrentRequestsController.dispose();
+    _maxQueueSizeController.dispose();
+    _multipartChunksizeController.dispose();
+    super.dispose();
   }
 
   Future<void> _testS3() async {
@@ -740,7 +764,7 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
-    
+
     // Get screen dimensions for responsive sizing
     final screenSize = MediaQuery.of(context).size;
     final dialogWidth = (screenSize.width * 0.75).clamp(300.0, 400.0);
@@ -753,101 +777,165 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
         child: SizedBox(
           width: dialogWidth,
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _provider,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Provider',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'aws', child: Text('Amazon S3')),
-                DropdownMenuItem(value: 'minio', child: Text('MinIO')),
-              ],
-              onChanged: (value) => setState(() => _provider = value!),
-            ),
-            const SizedBox(height: 16),
-            if (_provider == 'minio')
-              TextFormField(
-                controller: _endpointController,
-                style: TextStyle(color: AppColors.inputText),
-                decoration: InputDecoration(
-                  labelText: 'Endpoint',
-                  labelStyle: TextStyle(color: AppColors.inputLabel),
-                  hintText: 'https://minio.example.com',
-                  hintStyle: TextStyle(color: AppColors.inputHint),
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            if (_provider == 'minio') const SizedBox(height: 16),
-            TextFormField(
-              controller: _bucketController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Bucket Name',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (_provider == 'aws')
-              TextFormField(
-                controller: _regionController,
-                style: TextStyle(color: AppColors.inputText),
-                decoration: InputDecoration(
-                  labelText: 'AWS Region',
-                  labelStyle: TextStyle(color: AppColors.inputLabel),
-                  hintText: 'e.g., us-east-1, eu-north-1',
-                  hintStyle: TextStyle(color: AppColors.inputHint),
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            if (_provider == 'aws') const SizedBox(height: 16),
-            TextFormField(
-              controller: _accessKeyController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Access Key',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _secretKeyController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Secret Key',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
-              ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 16),
-            if (_provider == 'aws')
+            mainAxisSize: MainAxisSize.min,
+            children: [
               DropdownButtonFormField<String>(
-                initialValue: _storageClass,
+                initialValue: _provider,
                 style: TextStyle(color: AppColors.inputText),
                 decoration: InputDecoration(
-                  labelText: 'Storage Class',
+                  labelText: 'Provider',
                   labelStyle: TextStyle(color: AppColors.inputLabel),
                   border: const OutlineInputBorder(),
                 ),
                 items: const [
-                  DropdownMenuItem(value: 'STANDARD', child: Text('Standard')),
-                  DropdownMenuItem(
-                      value: 'STANDARD_IA', child: Text('Standard-IA')),
-                  DropdownMenuItem(value: 'GLACIER', child: Text('Glacier')),
-                  DropdownMenuItem(
-                      value: 'DEEP_ARCHIVE', child: Text('Deep Archive')),
+                  DropdownMenuItem(value: 'aws', child: Text('Amazon S3')),
+                  DropdownMenuItem(value: 'minio', child: Text('MinIO')),
                 ],
-                onChanged: (value) => setState(() => _storageClass = value!),
+                onChanged: (value) => setState(() => _provider = value!),
               ),
-          ],
-        ),
+              const SizedBox(height: 16),
+              if (_provider == 'minio')
+                TextFormField(
+                  controller: _endpointController,
+                  style: TextStyle(color: AppColors.inputText),
+                  decoration: InputDecoration(
+                    labelText: 'Endpoint',
+                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                    hintText: 'https://minio.example.com',
+                    hintStyle: TextStyle(color: AppColors.inputHint),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              if (_provider == 'minio') const SizedBox(height: 16),
+              TextFormField(
+                controller: _bucketController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Bucket Name',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (_provider == 'aws')
+                TextFormField(
+                  controller: _regionController,
+                  style: TextStyle(color: AppColors.inputText),
+                  decoration: InputDecoration(
+                    labelText: 'AWS Region',
+                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                    hintText: 'e.g., us-east-1, eu-north-1',
+                    hintStyle: TextStyle(color: AppColors.inputHint),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+              if (_provider == 'aws') const SizedBox(height: 16),
+              TextFormField(
+                controller: _accessKeyController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Access Key',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _secretKeyController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Secret Key',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  border: const OutlineInputBorder(),
+                ),
+                obscureText: true,
+              ),
+              const SizedBox(height: 16),
+              if (_provider == 'aws')
+                DropdownButtonFormField<String>(
+                  initialValue: _storageClass,
+                  style: TextStyle(color: AppColors.inputText),
+                  decoration: InputDecoration(
+                    labelText: 'Storage Class',
+                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                    border: const OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'STANDARD', child: Text('Standard')),
+                    DropdownMenuItem(
+                        value: 'STANDARD_IA', child: Text('Standard-IA')),
+                    DropdownMenuItem(value: 'GLACIER', child: Text('Glacier')),
+                    DropdownMenuItem(
+                        value: 'DEEP_ARCHIVE', child: Text('Deep Archive')),
+                  ],
+                  onChanged: (value) => setState(() => _storageClass = value!),
+                ),
+              if (_provider == 'aws') const SizedBox(height: 24),
+              if (_provider == 'aws')
+                Text(
+                  'Sync Settings',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.inputText,
+                  ),
+                ),
+              if (_provider == 'aws') const SizedBox(height: 16),
+              if (_provider == 'aws')
+                TextFormField(
+                  controller: _maxConcurrentRequestsController,
+                  style: TextStyle(color: AppColors.inputText),
+                  decoration: InputDecoration(
+                    labelText: 'Max Concurrent Requests',
+                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                    hintText: '10',
+                    hintStyle: TextStyle(color: AppColors.inputHint),
+                    helperText:
+                        'Number of concurrent S3 requests (default: 10)',
+                    helperStyle:
+                        TextStyle(color: AppColors.inputHint, fontSize: 12),
+                    border: const OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+              if (_provider == 'aws') const SizedBox(height: 16),
+              if (_provider == 'aws')
+                TextFormField(
+                  controller: _maxQueueSizeController,
+                  style: TextStyle(color: AppColors.inputText),
+                  decoration: InputDecoration(
+                    labelText: 'Max Queue Size',
+                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                    hintText: '1000',
+                    hintStyle: TextStyle(color: AppColors.inputHint),
+                    helperText:
+                        'Maximum number of items in queue (default: 1000)',
+                    helperStyle:
+                        TextStyle(color: AppColors.inputHint, fontSize: 12),
+                    border: const OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+              if (_provider == 'aws') const SizedBox(height: 16),
+              if (_provider == 'aws')
+                TextFormField(
+                  controller: _multipartChunksizeController,
+                  style: TextStyle(color: AppColors.inputText),
+                  decoration: InputDecoration(
+                    labelText: 'Multipart Chunk Size',
+                    labelStyle: TextStyle(color: AppColors.inputLabel),
+                    hintText: '8MB',
+                    hintStyle: TextStyle(color: AppColors.inputHint),
+                    helperText:
+                        'Size of chunks for multipart uploads (e.g., 8MB, 128MB)',
+                    helperStyle:
+                        TextStyle(color: AppColors.inputHint, fontSize: 12),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -867,7 +955,7 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
         ),
         ElevatedButton(
           onPressed: () {
-            final config = {
+            final config = <String, dynamic>{
               'provider': _provider,
               'endpoint': _endpointController.text,
               'bucket': _bucketController.text,
@@ -876,6 +964,16 @@ class _S3ConfigDialogState extends State<_S3ConfigDialog> {
               'secret_key': _secretKeyController.text,
               'storage_class': _storageClass,
             };
+            if (_provider == 'aws') {
+              config['max_concurrent_requests'] =
+                  int.tryParse(_maxConcurrentRequestsController.text) ?? 10;
+              config['max_queue_size'] =
+                  int.tryParse(_maxQueueSizeController.text) ?? 1000;
+              config['multipart_chunksize'] =
+                  _multipartChunksizeController.text.isEmpty
+                      ? '8MB'
+                      : _multipartChunksizeController.text;
+            }
             Navigator.of(context).pop(config);
           },
           child: const Text('Save'),
@@ -921,7 +1019,7 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
-    
+
     // Get screen dimensions for responsive sizing
     final screenSize = MediaQuery.of(context).size;
     final dialogWidth = (screenSize.width * 0.75).clamp(300.0, 500.0);
@@ -934,52 +1032,52 @@ class _CommandsConfigDialogState extends State<_CommandsConfigDialog> {
         child: SizedBox(
           width: dialogWidth,
           child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Configure commands to run before and after backup execution. Use these to suspend/resume services during backups.',
-              style: TextStyle(color: AppColors.secondaryText, fontSize: 14),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _preCommandController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Pre-Command (runs before backup)',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                hintText: 'docker stop myservice',
-                hintStyle: TextStyle(color: AppColors.inputHint),
-                helperText:
-                    'Command to run before the backup starts (e.g., suspend services)',
-                helperStyle: TextStyle(color: AppColors.inputHelper),
-                border: const OutlineInputBorder(),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Configure commands to run before and after backup execution. Use these to suspend/resume services during backups.',
+                style: TextStyle(color: AppColors.secondaryText, fontSize: 14),
               ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _postCommandController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Post-Command (runs after backup)',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                hintText: 'docker start myservice',
-                hintStyle: TextStyle(color: AppColors.inputHint),
-                helperText:
-                    'Command to run after backup completes (success or failure)',
-                helperStyle: TextStyle(color: AppColors.inputHelper),
-                border: const OutlineInputBorder(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _preCommandController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Pre-Command (runs before backup)',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  hintText: 'docker stop myservice',
+                  hintStyle: TextStyle(color: AppColors.inputHint),
+                  helperText:
+                      'Command to run before the backup starts (e.g., suspend services)',
+                  helperStyle: TextStyle(color: AppColors.inputHelper),
+                  border: const OutlineInputBorder(),
+                ),
+                maxLines: 2,
               ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Note: Commands will run with a 5-minute timeout. Non-zero exit codes will be logged as warnings but won\'t fail the backup.',
-              style: TextStyle(color: AppColors.accentOrange, fontSize: 12),
-            ),
-          ],
-        ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _postCommandController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Post-Command (runs after backup)',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  hintText: 'docker start myservice',
+                  hintStyle: TextStyle(color: AppColors.inputHint),
+                  helperText:
+                      'Command to run after backup completes (success or failure)',
+                  helperStyle: TextStyle(color: AppColors.inputHelper),
+                  border: const OutlineInputBorder(),
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Note: Commands will run with a 5-minute timeout. Non-zero exit codes will be logged as warnings but won\'t fail the backup.',
+                style: TextStyle(color: AppColors.accentOrange, fontSize: 12),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
@@ -1070,7 +1168,7 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
   @override
   Widget build(BuildContext context) {
     final backgroundColor = AppColors.dialogBackground;
-    
+
     // Get screen dimensions for responsive sizing
     final screenSize = MediaQuery.of(context).size;
     final dialogWidth = (screenSize.width * 0.75).clamp(300.0, 400.0);
@@ -1085,110 +1183,110 @@ class _DatabaseConfigDialogState extends State<_DatabaseConfigDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-            DropdownButtonFormField<String>(
-              initialValue: _dbType,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Database Type',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
+              DropdownButtonFormField<String>(
+                initialValue: _dbType,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Database Type',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  border: const OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                      value: 'postgresql', child: Text('PostgreSQL')),
+                  DropdownMenuItem(
+                      value: 'mariadb', child: Text('MariaDB/MySQL')),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _dbType = value!;
+                    _portController.text =
+                        value == 'postgresql' ? '5432' : '3306';
+                  });
+                },
               ),
-              items: const [
-                DropdownMenuItem(
-                    value: 'postgresql', child: Text('PostgreSQL')),
-                DropdownMenuItem(
-                    value: 'mariadb', child: Text('MariaDB/MySQL')),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  _dbType = value!;
-                  _portController.text =
-                      value == 'postgresql' ? '5432' : '3306';
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: TextFormField(
-                    controller: _hostController,
-                    style: TextStyle(color: AppColors.inputText),
-                    decoration: InputDecoration(
-                      labelText: 'Host',
-                      labelStyle: TextStyle(color: AppColors.inputLabel),
-                      border: const OutlineInputBorder(),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: _hostController,
+                      style: TextStyle(color: AppColors.inputText),
+                      decoration: InputDecoration(
+                        labelText: 'Host',
+                        labelStyle: TextStyle(color: AppColors.inputLabel),
+                        border: const OutlineInputBorder(),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 1,
-                  child: TextFormField(
-                    controller: _portController,
-                    style: TextStyle(color: AppColors.inputText),
-                    decoration: InputDecoration(
-                      labelText: 'Port',
-                      labelStyle: TextStyle(color: AppColors.inputLabel),
-                      border: const OutlineInputBorder(),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 1,
+                    child: TextFormField(
+                      controller: _portController,
+                      style: TextStyle(color: AppColors.inputText),
+                      decoration: InputDecoration(
+                        labelText: 'Port',
+                        labelStyle: TextStyle(color: AppColors.inputLabel),
+                        border: const OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
                     ),
-                    keyboardType: TextInputType.number,
                   ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _usernameController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Username',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  border: const OutlineInputBorder(),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _usernameController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Username',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _passwordController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Password',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passwordController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  border: const OutlineInputBorder(),
+                ),
+                obscureText: true,
               ),
-              obscureText: true,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _databaseController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Database Name',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                border: const OutlineInputBorder(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _databaseController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Database Name',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  border: const OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _tablesController,
-              style: TextStyle(color: AppColors.inputText),
-              decoration: InputDecoration(
-                labelText: 'Tables (one per line)',
-                labelStyle: TextStyle(color: AppColors.inputLabel),
-                hintText: 'users\norders\nproducts',
-                hintStyle: TextStyle(color: AppColors.inputHint),
-                border: const OutlineInputBorder(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _tablesController,
+                style: TextStyle(color: AppColors.inputText),
+                decoration: InputDecoration(
+                  labelText: 'Tables (one per line)',
+                  labelStyle: TextStyle(color: AppColors.inputLabel),
+                  hintText: 'users\norders\nproducts',
+                  hintStyle: TextStyle(color: AppColors.inputHint),
+                  border: const OutlineInputBorder(),
+                ),
+                maxLines: 3,
               ),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _testConnection,
-              child: const Text('Test Connection'),
-            ),
-          ],
-        ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _testConnection,
+                child: const Text('Test Connection'),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [

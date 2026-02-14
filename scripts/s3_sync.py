@@ -96,50 +96,66 @@ class S3Syncer:
         
         logger.info(f"Running aws sync: {' '.join(cmd)}")
         
-        # Track elapsed time
-        start_time = time.time()
-        
-        # Execute aws sync command
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            universal_newlines=True,
-            env=env
-        )
-        
-        # Capture output
-        stdout, stderr = process.communicate()
-        
-        # Calculate elapsed time
-        elapsed_time = time.time() - start_time
-        
-        # Extract transfer statistics
-        stats = self._extract_aws_sync_stats(stdout, stderr, elapsed_time)
-        
-        # Log stdout
-        if stdout:
-            for line in stdout.strip().split('\n'):
-                if line.strip():
-                    logger.debug(f"aws sync: {line.strip()}")
-        
-        # Log stderr
-        if stderr:
-            for line in stderr.strip().split('\n'):
-                if line.strip():
-                    if 'error' in line.lower() or 'failed' in line.lower():
-                        logger.error(f"aws sync error: {line.strip()}")
-                    else:
-                        logger.info(f"aws sync: {line.strip()}")
-        
-        if process.returncode != 0:
-            error_msg = f"aws sync failed with return code {process.returncode}"
+        # Create temporary AWS config file with S3 sync settings if provided
+        temp_config_file = None
+        try:
+            temp_config_file = self._create_aws_config_file(s3_config, logger)
+            if temp_config_file:
+                env['AWS_CONFIG_FILE'] = temp_config_file
+                logger.info(f"Using custom AWS config file for S3 sync")
+            
+            # Track elapsed time
+            start_time = time.time()
+            
+            # Execute aws sync command
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                universal_newlines=True,
+                env=env
+            )
+            
+            # Capture output
+            stdout, stderr = process.communicate()
+            
+            # Calculate elapsed time
+            elapsed_time = time.time() - start_time
+            
+            # Extract transfer statistics
+            stats = self._extract_aws_sync_stats(stdout, stderr, elapsed_time)
+            
+            # Log stdout
+            if stdout:
+                for line in stdout.strip().split('\n'):
+                    if line.strip():
+                        logger.debug(f"aws sync: {line.strip()}")
+            
+            # Log stderr
             if stderr:
-                error_msg += f". Error: {stderr.strip()}"
-            raise Exception(error_msg)
+                for line in stderr.strip().split('\n'):
+                    if line.strip():
+                        if 'error' in line.lower() or 'failed' in line.lower():
+                            logger.error(f"aws sync error: {line.strip()}")
+                        else:
+                            logger.info(f"aws sync: {line.strip()}")
+            
+            if process.returncode != 0:
+                error_msg = f"aws sync failed with return code {process.returncode}"
+                if stderr:
+                    error_msg += f". Error: {stderr.strip()}"
+                raise Exception(error_msg)
+            
+            return stats
         
-        return stats
+        finally:
+            # Clean up temporary config file
+            if temp_config_file:
+                try:
+                    os.unlink(temp_config_file)
+                except Exception as e:
+                    logger.debug(f"Failed to delete temporary AWS config file: {e}")
 
     def _extract_aws_sync_stats(self, stdout, stderr, elapsed_time):
         """Extract transfer statistics from aws sync output.
@@ -231,6 +247,53 @@ class S3Syncer:
             return f"{int(size)} {units[unit_index]}"
         else:
             return f"{size:.1f} {units[unit_index]}"
+
+    def _create_aws_config_file(self, s3_config, logger):
+        """Create a temporary AWS config file with S3 sync settings.
+        
+        Args:
+            s3_config: S3 configuration dictionary
+            logger: Logger instance
+        
+        Returns:
+            str: Path to temporary config file, or None if no S3 settings to configure
+        """
+        # Check if any S3 sync settings are provided
+        has_sync_settings = (
+            s3_config.get('max_concurrent_requests') or
+            s3_config.get('max_queue_size') or
+            s3_config.get('multipart_chunksize')
+        )
+        
+        if not has_sync_settings:
+            return None
+        
+        try:
+            # Build AWS config content
+            config_content = "[default]\n"
+            config_content += "s3 =\n"
+            
+            if s3_config.get('max_concurrent_requests'):
+                config_content += f"    max_concurrent_requests = {s3_config['max_concurrent_requests']}\n"
+            
+            if s3_config.get('max_queue_size'):
+                config_content += f"    max_queue_size = {s3_config['max_queue_size']}\n"
+            
+            if s3_config.get('multipart_chunksize'):
+                config_content += f"    multipart_chunksize = {s3_config['multipart_chunksize']}\n"
+            
+            # Create temporary config file
+            with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.config') as f:
+                f.write(config_content)
+                temp_file = f.name
+            
+            logger.info(f"AWS S3 sync settings: max_concurrent_requests={s3_config.get('max_concurrent_requests', 10)}, max_queue_size={s3_config.get('max_queue_size', 1000)}, multipart_chunksize={s3_config.get('multipart_chunksize', '8MB')}")
+            logger.info(f"Created temporary AWS config file at {temp_file}")
+            return temp_file
+        
+        except Exception as e:
+            logger.warning(f"Failed to create temporary AWS config file: {e}")
+            return None
 
     def test_s3_connection(self, s3_config):
         """Test S3 connection and credentials, including write permissions.
@@ -472,6 +535,7 @@ class S3Syncer:
 
     def restore_from_s3(self, s3_config, repo_name, local_path, logger):
         """Restore a repository from S3 to local storage."""
+        temp_config_file = None
         try:
             # Extract bucket name and prefix from bucket field
             s3_bucket_raw = s3_config['bucket']
@@ -501,6 +565,12 @@ class S3Syncer:
             env['AWS_SECRET_ACCESS_KEY'] = s3_config['secret_key']
             if s3_config.get('region'):
                 env['AWS_DEFAULT_REGION'] = s3_config['region']
+            
+            # Create temporary AWS config file with S3 sync settings if provided
+            temp_config_file = self._create_aws_config_file(s3_config, logger)
+            if temp_config_file:
+                env['AWS_CONFIG_FILE'] = temp_config_file
+                logger.info(f"Using custom AWS config file for S3 restore")
             
             cmd = [
                 'aws', 's3', 'sync',
@@ -536,6 +606,14 @@ class S3Syncer:
         except Exception as e:
             logger.error(f"S3 restore failed: {e}")
             raise
+        
+        finally:
+            # Clean up temporary config file
+            if temp_config_file:
+                try:
+                    os.unlink(temp_config_file)
+                except Exception as e:
+                    logger.debug(f"Failed to delete temporary AWS config file: {e}")
 
 if __name__ == '__main__':
     # This can be used for testing S3 sync functionality
