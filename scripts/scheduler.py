@@ -25,6 +25,10 @@ class BackupScheduler:
         self.executor = BackupExecutor()
         self.notification_service = NotificationService()
         
+        # Track running jobs to prevent duplicate simultaneous execution
+        self.running_jobs = set()
+        self.jobs_lock = threading.Lock()
+        
         # Set up logging
         os.makedirs(self.log_dir, exist_ok=True)
         logging.basicConfig(
@@ -111,6 +115,12 @@ class BackupScheduler:
     def should_run_job(self, schedule, current_time, job_id):
         """Check if a job should run based on its schedule."""
         try:
+            # First check if this job is already running
+            with self.jobs_lock:
+                if job_id in self.running_jobs:
+                    self.logger.debug(f"Job {job_id} is already running, skipping duplicate execution")
+                    return False
+            
             # Create croniter object  
             cron = croniter(schedule, current_time)
             
@@ -166,6 +176,41 @@ class BackupScheduler:
         except Exception:
             return False
 
+    def _execute_job_in_thread(self, job):
+        """Execute a job in a background thread, handling cleanup."""
+        job_id = job['id']
+        job_name = job['name']
+        
+        try:
+            # Mark job as running
+            with self.jobs_lock:
+                self.running_jobs.add(job_id)
+            
+            self.logger.info(f"Starting backup job in thread: {job_name}")
+            
+            # Execute the backup job
+            self.executor.execute_job(job)
+            self.logger.info(f"Completed backup job: {job_name}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to execute job {job_name}: {e}")
+            
+            # Send failure notification
+            try:
+                self.notification_service.send_notification(
+                    subject=f"Backup job failed: {job_name}",
+                    message=f"Job {job_name} failed with error: {str(e)}",
+                    is_error=True
+                )
+            except Exception as notify_error:
+                self.logger.error(f"Failed to send notification: {notify_error}")
+        
+        finally:
+            # Remove job from running set when complete
+            with self.jobs_lock:
+                self.running_jobs.discard(job_id)
+            self.logger.debug(f"Job {job_name} thread completed, removed from running jobs")
+
     def run(self):
         """Main scheduler loop."""
         self.logger.info("Backup scheduler started")
@@ -186,29 +231,18 @@ class BackupScheduler:
                     if pending_jobs:
                         self.logger.info(f"Found {len(pending_jobs)} pending jobs at {current_time.strftime('%H:%M')}")
                         
-                        # Run jobs sequentially
+                        # Run jobs in parallel using threads
                         for job in pending_jobs:
                             if not self.running:
                                 break
                             
-                            self.logger.info(f"Starting backup job: {job['name']}")
-                            
-                            try:
-                                # Execute the backup job
-                                self.executor.execute_job(job)
-                                self.logger.info(f"Completed backup job: {job['name']}")
-                            except Exception as e:
-                                self.logger.error(f"Failed to execute job {job['name']}: {e}")
-                                
-                                # Send failure notification
-                                try:
-                                    self.notification_service.send_notification(
-                                        subject=f"Backup job failed: {job['name']}",
-                                        message=f"Job {job['name']} failed with error: {str(e)}",
-                                        is_error=True
-                                    )
-                                except Exception as notify_error:
-                                    self.logger.error(f"Failed to send notification: {notify_error}")
+                            # Create and start a thread for this job
+                            job_thread = threading.Thread(
+                                target=self._execute_job_in_thread,
+                                args=(job,),
+                                daemon=False
+                            )
+                            job_thread.start()
                 
                 # Sleep for a bit before checking again
                 # We check every 30 seconds to be responsive to minute boundaries
