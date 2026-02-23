@@ -168,13 +168,23 @@ class BackupExecutor:
                     job, repo_path, started_at, job_logger
                 )
             
-            # Execute post-command if specified (after borg/DB steps, before S3 sync)
-            if job.get('post_command'):
-                job_logger.info(f"Executing post-command: {job['post_command']}")
-                self._execute_command(job['post_command'], job_logger)
-            
         except Exception as e:
             backup_exception = e
+        
+        # ALWAYS execute post-command if specified (even if backup steps failed)
+        # This ensures cleanup operations like maintenance mode are always performed
+        post_command_exception = None
+        if job.get('post_command'):
+            try:
+                job_logger.info(f"Executing post-command: {job['post_command']}")
+                self._execute_command(job['post_command'], job_logger)
+            except Exception as e:
+                post_command_exception = e
+                job_logger.error(f"Post-command failed: {e}")
+        
+        # If backup succeeded but post-command failed, treat post-command failure as the failure
+        if backup_exception is None and post_command_exception is not None:
+            backup_exception = post_command_exception
         
         try:
             # Sync to S3 if configured (only if backup steps succeeded)
