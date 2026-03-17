@@ -500,7 +500,7 @@ class BackupExecutor:
         borg_cmd = [
             'borg', 'prune',
             '--list',
-            '--glob-archives', f"{job['name']}_*",
+            '--glob-archives', f"{job['name']}_[0-9]*",
             f'--keep-daily={job["keep_daily"]}',
             f'--keep-monthly={job["keep_monthly"]}',
             f'--keep-yearly={job["keep_yearly"]}',
