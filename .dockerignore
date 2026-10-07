@@ -29,6 +29,7 @@ Thumbs.db
 build/
 dist/
 *.tar.gz
+node_modules/
 
 # Flutter specific
 .dart_tool/

@@ -74,6 +74,8 @@ build/
 
 # Python venv
 venv/**
+/webui/node_modules/
+/webui/dist/
 
 # Local-only agent guidance (never commit)
 AGENTS.md

@@ -1,8 +1,8 @@
 # Jogoborg — Borg Backup Management System
 
-Jogoborg is a Docker-based backup solution built on [BorgBackup](https://borgbackup.readthedocs.io/) with a modern Flutter web interface. It automates scheduled backups, repository management, S3/MinIO sync, database dumps, and notifications.
+Jogoborg is a Docker-based backup solution built on [BorgBackup](https://borgbackup.readthedocs.io/) with a modern web interface. It automates scheduled backups, repository management, S3/MinIO sync, database dumps, and notifications.
 
-- **Frontend**: Flutter web app (auth-protected UI)
+- **Frontend**: Svelte web app in [`webui/`](webui/) (auth-protected UI)
 - **Backend**: Python services (web server, scheduler, backup executor)
 - **Storage**: Borg repositories, SQLite config DB, GPG-encrypted credentials
 
@@ -183,7 +183,7 @@ For fast iteration without rebuilding the Docker image, run the same services di
 ### Prerequisites
 
 - Python 3.7+, SQLite 3, **borg**, **gpg**, and the Python packages `cryptography`, `croniter`, `requests` (`make install-deps` or `pip install -r requirements.txt`)
-- Flutter (optional) only if you build the web UI locally — see *Development workflow* below
+- Node.js 18+ and npm for the Svelte frontend (`cd webui && npm install` once)
 
 ### Quick Start
 
@@ -249,7 +249,7 @@ quick_restart         # stop + start
 ### Development Workflow
 
 - **Python** (`scripts/`): stop → edit → `make start` (changes take effect on restart; `JOGOBORG_DEV_AUTO_RELOAD` enables live reload).
-- **Flutter** (`lib/`): edit → `flutter build web --release` from the project root → refresh the browser. If no Flutter build exists, the server falls back to the dev API interface (`index-dev.html`).
+- **Frontend** (`webui/`): for local dev run `npm run dev` (Vite dev server on http://localhost:5173, proxying `/api` to the backend; set `JOGOBORG_API_PROXY` if your backend runs elsewhere). For a production build run `npm run build` — output `webui/dist/` is what `web_server.py` serves as `JOGOBORG_WEB_DIR` in the container. Run `npm run check` to type-check.
 - **Verify a backup**: `make start` → create job in the UI → "Run Now" → `make logs-scheduler` + `make db-logs` + `make repos`.
 
 ### Local vs Docker

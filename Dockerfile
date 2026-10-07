@@ -1,45 +1,13 @@
-# Build stage - compile Flutter web application
-FROM ubuntu:24.04 AS builder
-
-# Install Flutter build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
-    unzip \
-    xz-utils \
-    zip \
-    ca-certificates \
-    sudo \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user for Flutter
-RUN useradd -m -s /bin/bash flutter && \
-    echo 'flutter ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
-
-# Create app directory with proper ownership
-RUN mkdir -p /app && chown -R flutter:flutter /app
-
-USER flutter
-
-# Install Flutter
-RUN git clone https://github.com/flutter/flutter.git -b stable /home/flutter/flutter
-ENV PATH="/home/flutter/flutter/bin:${PATH}"
-
-# Configure Flutter and pre-cache web
-RUN flutter config --enable-web --no-analytics && \
-    flutter precache --web
+# Build stage - compile the Svelte web frontend
+FROM node:22-alpine AS frontend
 
 WORKDIR /app
-COPY --chown=flutter:flutter pubspec.yaml ./
-RUN flutter pub get
 
-COPY --chown=flutter:flutter . .
-# Use full main application
-RUN mv lib/main.dart lib/main_simple.dart || true && \
-    mv lib/main_full.dart lib/main.dart || true
+COPY webui/package.json webui/package-lock.json* ./
+RUN npm ci --no-audit --no-fund
 
-# Build Flutter web application
-RUN flutter build web --release
+COPY webui/ .
+RUN npm run build
 
 # Runtime stage - Ubuntu with Python and backend services
 FROM ubuntu:24.04
@@ -89,8 +57,9 @@ RUN mkdir -p /app
 
 WORKDIR /app
 
-# Copy compiled Flutter web assets from builder
-COPY --from=builder /app/build/web /app/build/web
+# Copy compiled web frontend from the frontend stage. This is the default
+# JOGOBORG_WEB_DIR used by web_server.py.
+COPY --from=frontend /app/dist /app/build/web
 
 # Copy application source code
 COPY . .
