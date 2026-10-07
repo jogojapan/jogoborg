@@ -55,6 +55,7 @@ build/
 venv/**
 /webui/node_modules/
 /webui/dist/
+/webui/src/lib/build-info.ts
 
 # Local-only agent guidance (never commit)
 AGENTS.md

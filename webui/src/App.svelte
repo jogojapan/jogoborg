@@ -2,6 +2,7 @@
   import { router } from './lib/router.svelte';
   import { auth, logout } from './lib/auth.svelte';
   import { theme, toggleTheme } from './lib/theme.svelte';
+  import { buildInfo } from './lib/build-info';
   import Toasts from './components/Toasts.svelte';
   import Icon from './components/Icon.svelte';
   import Login from './screens/Login.svelte';
@@ -61,6 +62,17 @@
         <Icon icon="logout" />
         <span>Logout</span>
       </button>
+      <div class="version">
+        <div class="version-line">
+          <span class="version-tag">v{buildInfo.tag}</span>
+          <span class="version-commit" title={buildInfo.commit}>
+            {buildInfo.commit}
+          </span>
+        </div>
+        <div class="version-date">
+          built {new Date(buildInfo.date).toLocaleDateString()}
+        </div>
+      </div>
     </aside>
 
     <div class="main">
@@ -145,6 +157,38 @@
   .nav-item.logout {
     margin-top: auto;
     color: var(--error);
+  }
+  .version {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    word-break: break-all;
+  }
+  .version-line {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .version-tag {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .version-commit {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .version-date {
+    opacity: 0.8;
+  }
+
+  @media (max-width: 720px) {
+    .version {
+      display: none;
+    }
   }
   .main {
     display: flex;

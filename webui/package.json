@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/version.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/version.mjs",
     "build": "vite build",
     "preview": "vite preview --port 4310",
     "check": "svelte-check --tsconfig ./tsconfig.json"
