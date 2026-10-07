@@ -70,6 +70,7 @@ def init_database():
         path TEXT NOT NULL UNIQUE,
         name TEXT NOT NULL,
         encryption_key_hint TEXT,
+        encrypted_passphrase TEXT,
         last_accessed TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
@@ -180,6 +181,15 @@ def _migrate_database(cursor):
         cursor.execute("ALTER TABLE job_logs ADD COLUMN db_compact_duration INTEGER")
         cursor.execute("ALTER TABLE job_logs ADD COLUMN db_compact_max_memory INTEGER")
         print("Migration completed: database compact tracking columns added.")
+
+    # repositories: ensure the encrypted_passphrase column exists (for
+    # auto-unlock of repositories created via the web UI).
+    cursor.execute("PRAGMA table_info(repositories)")
+    repo_columns = [row[1] for row in cursor.fetchall()]
+    if repo_columns and 'encrypted_passphrase' not in repo_columns:
+        print("Adding repositories.encrypted_passphrase column...")
+        cursor.execute("ALTER TABLE repositories ADD COLUMN encrypted_passphrase TEXT")
+        print("Migration completed: repositories.encrypted_passphrase column added.")
 
 if __name__ == '__main__':
     init_database()

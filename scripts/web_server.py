@@ -139,6 +139,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             
             if path == '/api/jobs':
                 self._handle_create_job(data)
+            elif path == '/api/repositories':
+                self._handle_create_repository(data)
             elif path == '/api/sources/browse':
                 self._handle_browse_sources(data)
             elif path == '/api/sources/size':
@@ -292,7 +294,23 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         try:
             repositories = []
             borgspace_path = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
-            
+
+            # Paths for which we have a stored (encrypted) passphrase, so the
+            # UI can auto-unlock them.
+            stored = set()
+            try:
+                conn = sqlite3.connect(self.db_path)
+                stored = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT path FROM repositories "
+                        "WHERE encrypted_passphrase IS NOT NULL AND encrypted_passphrase != ''"
+                    )
+                }
+                conn.close()
+            except Exception:
+                stored = set()
+
             if os.path.exists(borgspace_path):
                 for item in os.listdir(borgspace_path):
                     repo_path = os.path.join(borgspace_path, item)
@@ -305,7 +323,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                                 'name': item,
                                 'path': repo_path,
                                 'created_at': datetime.fromtimestamp(os.path.getctime(repo_path)).isoformat(),
-                                'archives_count': self._count_archives(repo_path)
+                                'archives_count': self._count_archives(repo_path),
+                                'has_stored_key': repo_path in stored,
                             })
             
             self._send_json_response({'repositories': repositories})
@@ -334,25 +353,81 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception:
             return 0
 
+    def _handle_create_repository(self, data):
+        """Create a new Borg repository and remember its passphrase."""
+        try:
+            name = data.get('name') or ''
+            passphrase = data.get('passphrase') or ''
+            executor = BackupExecutor()
+            try:
+                repo_path = executor.create_repository(name, passphrase, logger)
+            except ValueError as e:
+                self._send_error(400, str(e))
+                return
+
+            # Remember the passphrase (encrypted) for automatic unlock.
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cur = conn.cursor()
+                cur.execute('''
+                    INSERT INTO repositories (path, name, encrypted_passphrase)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(path) DO UPDATE SET
+                        name = excluded.name,
+                        encrypted_passphrase = excluded.encrypted_passphrase
+                ''', (repo_path, name, encrypt_data(passphrase)))
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.error(f"Failed to store repository passphrase: {e}")
+
+            self._send_json_response({
+                'message': 'Repository created successfully',
+                'repository': {'name': name, 'path': repo_path},
+            })
+        except Exception as e:
+            logger.error(f"Error creating repository: {e}")
+            self._send_error(500, "Failed to create repository")
+
     def _handle_unlock_repository(self, repo_id, data):
         """Unlock repository and list archives."""
         try:
             encryption_key = data.get('encryption_key')
-            if not encryption_key:
-                self._send_error(400, "Encryption key required")
+            
+            # Find repository by ID under borgspace
+            repo_path = None
+            repo_name = None
+            borgspace_path = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
+            
+            if os.path.isdir(borgspace_path):
+                for item in os.listdir(borgspace_path):
+                    if hash(item) % 10000 == int(repo_id):
+                        repo_path = os.path.join(borgspace_path, item)
+                        repo_name = item
+                        break
+            
+            if not repo_path or not repo_name:
+                self._send_error(404, "Repository not found")
                 return
             
-            # Find repository by ID
-            repo_path = None
-            borgspace_path = '/borgspace'
+            # If no key was supplied, use the stored (encrypted) passphrase so
+            # repositories created via the UI auto-unlock.
+            if not encryption_key:
+                try:
+                    conn = sqlite3.connect(self.db_path)
+                    cur = conn.cursor()
+                    row = cur.execute(
+                        "SELECT encrypted_passphrase FROM repositories WHERE path = ?",
+                        (repo_path,),
+                    ).fetchone()
+                    conn.close()
+                    if row and row[0]:
+                        encryption_key = decrypt_data(row[0])
+                except Exception as e:
+                    logger.error(f"Failed to auto-unlock repository {repo_name}: {e}")
             
-            for item in os.listdir(borgspace_path):
-                if hash(item) % 10000 == int(repo_id):
-                    repo_path = os.path.join(borgspace_path, item)
-                    break
-            
-            if not repo_path:
-                self._send_error(404, "Repository not found")
+            if not encryption_key:
+                self._send_error(400, "Encryption key required")
                 return
             
             # List archives using the provided key

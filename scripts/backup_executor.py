@@ -415,6 +415,33 @@ class BackupExecutor:
         finally:
             conn.close()
 
+    def create_repository(self, name, passphrase, logger):
+        """Create a new Borg repository under borgspace.
+
+        Validates the name (no separators/path traversal), refuses to clobber
+        an existing repository, initialises with repokey encryption, and
+        returns the created repo path.
+        """
+        allowed = set(
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-'
+        )
+        name = (name or '').strip()
+        if not name or name in ('.', '..') or any(c not in allowed for c in name):
+            raise ValueError(
+                "Repository name may only contain letters, digits, dots, "
+                "dashes and underscores"
+            )
+        if not passphrase:
+            raise ValueError("Passphrase is required to create a repository")
+
+        borgspace = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
+        repo_path = os.path.join(borgspace, name)
+        if os.path.exists(os.path.join(repo_path, 'config')):
+            raise ValueError(f"A repository already exists at {repo_path}")
+
+        self._init_repository(repo_path, passphrase, logger)
+        return repo_path
+
     def _init_repository(self, repo_path, passphrase, logger):
         """Initialize a new Borg repository."""
         if not passphrase:

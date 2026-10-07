@@ -6,6 +6,7 @@
   import type { Repository, Archive } from '../lib/types';
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
+  import NewRepositoryDialog from '../components/NewRepositoryDialog.svelte';
 
   let repositories = $state<Repository[]>([]);
   let loading = $state(true);
@@ -16,6 +17,8 @@
   let unlockKey = $state('');
   let unlocking = $state(false);
   let unlocked = $state(false);
+  let showNew = $state(false);
+  let showKeyField = $state(false);
 
   async function load() {
     loading = true;
@@ -37,23 +40,25 @@
     archives = [];
     unlockKey = '';
     unlocked = false;
+    showKeyField = !repo.has_stored_key;
+    if (repo.has_stored_key) {
+      unlock(); // auto-unlock using the stored passphrase
+    }
   }
 
-  async function unlock() {
-    if (!dialog || !unlockKey) {
-      toastError('Please enter the encryption key');
-      return;
-    }
+  async function unlock(key?: string) {
+    if (!dialog) return;
     unlocking = true;
     try {
       const res = await api.post<{ archives: Archive[] }>(
         `/repositories/${dialog.id}/unlock`,
-        { encryption_key: unlockKey },
+        key ? { encryption_key: key } : {},
         auth.token
       );
       archives = res.archives ?? [];
       unlocked = true;
     } catch (e) {
+      if (!showKeyField) showKeyField = true; // fall back to manual entry
       toastError('Failed to unlock repository: ' + errMsg(e));
     } finally {
       unlocking = false;
@@ -69,6 +74,9 @@
 </script>
 
 <div class="toolbar">
+  <button class="btn" onclick={() => (showNew = true)}>
+    <Icon icon="add" /> New Repository
+  </button>
   <button class="btn ghost" onclick={load}>
     <Icon icon="refresh" /> Refresh
   </button>
@@ -93,23 +101,44 @@
   </div>
 {/if}
 
+{#if showNew}
+  <NewRepositoryDialog
+    onClose={() => (showNew = false)}
+    onCreated={() => {
+      showNew = false;
+      load();
+    }}
+  />
+{/if}
+
 {#if dialog}
   <Modal title={'Repository: ' + dialog.name} onClose={closeDialog}>
     <p class="muted">Path: {dialog.path}</p>
 
     {#if !unlocked}
-      <div class="field">
-        <label for="repo-key">Encryption Key</label>
-        <input
-          id="repo-key"
-          type="password"
-          bind:value={unlockKey}
-          onkeydown={(e) => { if (e.key === 'Enter') unlock(); }}
-        />
-      </div>
-      <button class="btn" onclick={unlock} disabled={unlocking}>
-        <Icon icon="lock" /> {unlocking ? 'Unlocking…' : 'Unlock'}
-      </button>
+      {#if unlocking}
+        <div class="spinner"></div>
+      {:else if !showKeyField}
+        <button class="btn" onclick={() => unlock()}>
+          <Icon icon="lock" /> Unlock (saved passphrase)
+        </button>
+        <button class="btn ghost" onclick={() => (showKeyField = true)}>
+          Enter key manually
+        </button>
+      {:else}
+        <div class="field">
+          <label for="repo-key">Encryption Key</label>
+          <input
+            id="repo-key"
+            type="password"
+            bind:value={unlockKey}
+            onkeydown={(e) => { if (e.key === 'Enter') unlock(unlockKey); }}
+          />
+        </div>
+        <button class="btn" onclick={() => unlock(unlockKey)} disabled={unlocking}>
+          <Icon icon="lock" /> {unlocking ? 'Unlocking…' : 'Unlock'}
+        </button>
+      {/if}
     {:else}
       <h4>Archives (newest first):</h4>
       {#if archives.length === 0}

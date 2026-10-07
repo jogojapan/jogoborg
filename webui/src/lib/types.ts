@@ -11,6 +11,7 @@ export interface Repository {
   path: string;
   created_at?: string;
   archives_count: number;
+  has_stored_key?: boolean;
 }
 
 export interface Archive {
