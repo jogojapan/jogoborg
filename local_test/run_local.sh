@@ -35,11 +35,12 @@ export JOGOBORG_BORGSPACE_DIR="$SCRIPT_DIR/borgspace"
 export JOGOBORG_LOG_DIR="$SCRIPT_DIR/logs"
 export JOGOBORG_SOURCESPACE_DIR="$SCRIPT_DIR/sourcespace"
 
-# Use Flutter build output if it exists, otherwise fall back to web source directory
-if [ -f "$PROJECT_ROOT/build/web/index.html" ]; then
-    export JOGOBORG_WEB_DIR="$PROJECT_ROOT/build/web"
+# Serve the built Svelte frontend if present; otherwise the backend only
+# serves /api and you run the UI with: cd webui && npm run dev
+if [ -f "$PROJECT_ROOT/webui/dist/index.html" ]; then
+    export JOGOBORG_WEB_DIR="$PROJECT_ROOT/webui/dist"
 else
-    export JOGOBORG_WEB_DIR="$PROJECT_ROOT/web"
+    unset JOGOBORG_WEB_DIR
 fi
 
 # Ensure directories exist
