@@ -19,6 +19,7 @@ def init_database():
     CREATE TABLE IF NOT EXISTS backup_jobs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
+        repository TEXT,
         schedule TEXT NOT NULL,
         compression TEXT DEFAULT 'lz4',
         exclude_patterns TEXT,
@@ -160,6 +161,11 @@ def _migrate_database(cursor):
         print("Adding repository_passphrase column to backup_jobs table...")
         cursor.execute("ALTER TABLE backup_jobs ADD COLUMN repository_passphrase TEXT")
         print("Migration completed: repository_passphrase column added.")
+
+    if 'repository' not in columns:
+        print("Adding repository column to backup_jobs table...")
+        cursor.execute("ALTER TABLE backup_jobs ADD COLUMN repository TEXT")
+        print("Migration completed: repository column added.")
     
     # Check if new database backup columns exist, add them if they don't
     cursor.execute("PRAGMA table_info(job_logs)")

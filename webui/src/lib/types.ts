@@ -62,6 +62,7 @@ export interface DbConfig {
 export interface Job {
   id: number;
   name: string;
+  repository?: string | null;
   schedule: string;
   compression: string;
   exclude_patterns?: string | null;
@@ -79,6 +80,7 @@ export interface Job {
 
 export interface JobPayload {
   name: string;
+  repository: string;
   schedule: string;
   compression: string;
   exclude_patterns: string;

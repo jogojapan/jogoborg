@@ -137,8 +137,10 @@ class BackupExecutor:
                 job_logger.info(f"Executing pre-command: {job['pre_command']}")
                 self._execute_command(job['pre_command'], job_logger)
             
-            # Determine repository path
-            repo_path = os.path.join(self.borgspace_dir, job_name)
+            # Determine repository path. Jobs may name a specific repository; if they
+            # don't (legacy), fall back to the job name.
+            repo_name = job.get('repository') or job_name
+            repo_path = os.path.join(self.borgspace_dir, repo_name)
             
             # Initialize repository if it doesn't exist
             if not os.path.exists(repo_path):

@@ -56,7 +56,7 @@ class BackupScheduler:
         
         try:
             cursor.execute('''
-            SELECT id, name, schedule, compression, exclude_patterns, 
+SELECT id, name, repository, schedule, compression, exclude_patterns,
                    keep_daily, keep_monthly, keep_yearly, source_directories,
                    pre_command, post_command, s3_config, db_config, repository_passphrase
             FROM backup_jobs
@@ -66,7 +66,7 @@ class BackupScheduler:
             pending_jobs = []
             
             for job in jobs:
-                job_id, name, schedule, compression, exclude_patterns, \
+                job_id, name, repository, schedule, compression, exclude_patterns, \
                 keep_daily, keep_monthly, keep_yearly, source_directories, \
                 pre_command, post_command, s3_config, db_config, repository_passphrase = job
                 
@@ -101,6 +101,7 @@ class BackupScheduler:
                     pending_jobs.append({
                         'id': job_id,
                         'name': name,
+                        'repository': repository,
                         'schedule': schedule,
                         'compression': compression or 'lz4',
                         'exclude_patterns': exclude_patterns.split('\n') if exclude_patterns else [],

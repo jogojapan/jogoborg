@@ -471,7 +471,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         
         try:
             cursor.execute('''
-            SELECT id, name, schedule, compression, exclude_patterns,
+            SELECT id, name, repository, schedule, compression, exclude_patterns,
                    keep_daily, keep_monthly, keep_yearly, source_directories,
                    pre_command, post_command, s3_config, db_config,
                    repository_passphrase, created_at, updated_at
@@ -481,7 +481,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             
             jobs = []
             for row in cursor.fetchall():
-                job_id, name, schedule, compression, exclude_patterns, \
+                job_id, name, repository, schedule, compression, exclude_patterns, \
                 keep_daily, keep_monthly, keep_yearly, source_directories, \
                 pre_command, post_command, s3_config, db_config, \
                 repository_passphrase, created_at, updated_at = row
@@ -513,6 +513,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 jobs.append({
                     'id': job_id,
                     'name': name,
+                    'repository': repository,
                     'schedule': schedule,
                     'compression': compression,
                     'exclude_patterns': exclude_patterns,
@@ -576,12 +577,13 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 
                 cursor.execute('''
                 INSERT INTO backup_jobs (
-                    name, schedule, compression, exclude_patterns,
+                    name, repository, schedule, compression, exclude_patterns,
                     keep_daily, keep_monthly, keep_yearly, source_directories,
                     pre_command, post_command, s3_config, db_config, repository_passphrase
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
                     data['name'],
+                    data.get('repository') or data['name'],
                     data['schedule'],
                     data.get('compression', 'lz4'),
                     data.get('exclude_patterns', ''),
@@ -675,6 +677,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     cursor.execute('''
                     UPDATE backup_jobs SET repository_passphrase = ? WHERE id = ?
                     ''', (repository_passphrase_encrypted, job_id))
+
+                if data.get('repository'):
+                    cursor.execute('''
+                    UPDATE backup_jobs SET repository = ? WHERE id = ?
+                    ''', (data['repository'], job_id))
 
                 conn.commit()
                 

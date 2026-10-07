@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as api from '../lib/api';
+  import { onMount } from 'svelte';
   import { auth } from '../lib/auth.svelte';
   import { toastError, errMsg } from '../lib/toast.svelte';
   import { fetchTimeline } from '../lib/timeline';
@@ -21,6 +22,8 @@
   const isEditing = job !== null;
 
   let name = $state(job?.name ?? '');
+  let repository = $state<string | null>(job?.repository || job?.name || null);
+  let repos = $state<string[]>([]);
   let schedule = $state(job?.schedule ?? '');
   let compression = $state(job?.compression ?? 'lz4');
   let excludePatterns = $state(job?.exclude_patterns ?? '');
@@ -36,6 +39,23 @@
 
   let saving = $state(false);
   let activeDialog = $state<'dir' | 's3' | 'db' | 'commands' | null>(null);
+
+  // Always include the current selection so an edit keeps showing it even if
+  // the repository was removed from /borgspace.
+  const repoOptions = $derived(Array.from(new Set([...(repository ? [repository] : []), ...repos])));
+
+  async function loadRepos() {
+    try {
+      const res = await api.get<{ repositories: { name: string }[] }>(
+        '/repositories',
+        auth.token
+      );
+      repos = (res.repositories ?? []).map((r) => r.name);
+    } catch {
+      /* non-fatal; job can still be saved */
+    }
+  }
+  onMount(loadRepos);
 
   // "View activity" mini Gantt (recent runs, to pick a quiet window)
   let showActivity = $state(false);
@@ -69,6 +89,10 @@
       toastError('Name and schedule are required');
       return;
     }
+    if (!repository) {
+      toastError('Please select a repository');
+      return;
+    }
     if (sourceDirs.length === 0) {
       toastError('Please add at least one source directory');
       return;
@@ -81,6 +105,7 @@
     saving = true;
     const payload: JobPayload = {
       name: name.trim(),
+      repository: repository ?? '',
       schedule: schedule.trim(),
       compression: compression.trim() || 'lz4',
       exclude_patterns: excludePatterns,
@@ -118,6 +143,15 @@
   <div class="field">
     <label for="job-name">Job Name</label>
     <input id="job-name" bind:value={name} />
+  </div>
+  <div class="field">
+    <label for="job-repo">Borg Repository</label>
+    <select id="job-repo" bind:value={repository}>
+      <option value="" disabled>Select a repository</option>
+      {#each repoOptions as r}
+        <option value={r}>{r}</option>
+      {/each}
+    </select>
   </div>
   <div class="field">
     <label for="job-schedule">Schedule (cron)</label>
