@@ -2,13 +2,15 @@
   import * as api from '../lib/api';
   import { auth } from '../lib/auth.svelte';
   import { toastError, errMsg } from '../lib/toast.svelte';
-  import type { Job, JobPayload, S3Config, DbConfig } from '../lib/types';
+  import { fetchTimeline } from '../lib/timeline';
+  import type { Job, JobPayload, S3Config, DbConfig, JobRun } from '../lib/types';
   import Modal from './Modal.svelte';
   import Icon from './Icon.svelte';
   import DirectoryPicker from './DirectoryPicker.svelte';
   import S3Dialog from './S3Dialog.svelte';
   import DbDialog from './DbDialog.svelte';
   import CommandsDialog from './CommandsDialog.svelte';
+  import MiniGantt from './MiniGantt.svelte';
 
   let { job, onClose, onSaved }: {
     job: Job | null;
@@ -34,6 +36,28 @@
 
   let saving = $state(false);
   let activeDialog = $state<'dir' | 's3' | 'db' | 'commands' | null>(null);
+
+  // "View activity" mini Gantt (recent runs, to pick a quiet window)
+  let showActivity = $state(false);
+  let actRuns = $state<JobRun[]>([]);
+  let actLimit = $state<number | null>(null);
+  let actLoading = $state(false);
+
+  async function toggleActivity() {
+    showActivity = !showActivity;
+    if (showActivity && actRuns.length === 0) {
+      actLoading = true;
+      try {
+        const res = await fetchTimeline(72);
+        actRuns = res.logs;
+        actLimit = res.memory_limit_mb;
+      } catch (e) {
+        toastError('Failed to load scheduling activity: ' + errMsg(e));
+      } finally {
+        actLoading = false;
+      }
+    }
+  }
 
   function addSource(dir: string) {
     if (!sourceDirs.includes(dir)) sourceDirs.push(dir);
@@ -95,6 +119,19 @@
     <label for="job-schedule">Schedule (cron)</label>
     <input id="job-schedule" bind:value={schedule} placeholder="0 2 * * *" />
   </div>
+  <button class="btn ghost" onclick={toggleActivity} style="margin:-2px 0 10px">
+    <Icon icon="activity" />
+    {showActivity ? 'Hide' : 'View'} scheduling activity
+  </button>
+  {#if showActivity}
+    <div class="mini-wrap">
+      {#if actLoading}
+        <div class="spinner"></div>
+      {:else}
+        <MiniGantt runs={actRuns} limitMb={actLimit} hours={72} />
+      {/if}
+    </div>
+  {/if}
   {#if !isEditing}
     <div class="field">
       <label for="job-pass">Repository Passphrase</label>
@@ -201,6 +238,14 @@
 <style>
   h4 {
     margin: 16px 0 8px;
+  }
+  .mini-wrap {
+    margin-bottom: 12px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow-x: auto;
+    background: var(--surface-2);
   }
   .src-list,
   .summary {

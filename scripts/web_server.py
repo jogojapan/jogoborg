@@ -5,7 +5,7 @@ import json
 import sqlite3
 import logging
 import stat
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import subprocess
@@ -19,6 +19,7 @@ sys.path.append('/app')
 
 from scripts.notification_service import NotificationService
 from scripts.database_dumper import DatabaseDumper
+from scripts.memory_monitor import memory_stats
 from scripts.s3_sync import S3Syncer
 from scripts.backup_executor import BackupExecutor
 from scripts.init_gpg import encrypt_data, decrypt_data
@@ -89,6 +90,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._handle_get_notifications()
             elif path == '/api/notifications/edit':
                 self._handle_get_notifications_for_edit()
+            elif path == '/api/job-logs':
+                self._handle_get_job_logs_timeline(parsed_path.query)
+            elif path == '/api/system/memory':
+                self._handle_get_system_memory()
             elif path.startswith('/'):
                 self._serve_static_file(path)
             else:
@@ -749,6 +754,64 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error getting job logs: {e}")
             self._send_error(500, "Failed to get job logs")
+
+    def _handle_get_job_logs_timeline(self, query_string):
+        """Return all job runs within [since, until] plus the container memory
+        limit, for the scheduling Gantt."""
+        params = parse_qs(query_string)
+        try:
+            since = params.get('since', [None])[0]
+            until = params.get('until', [None])[0]
+            now = datetime.now(timezone.utc)
+            if not until:
+                until = now.isoformat()
+            if not since:
+                since = (now - timedelta(days=7)).isoformat()
+
+            conn = sqlite3.connect(self.db_path)
+            try:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT l.id, l.job_id, j.name, l.started_at, l.finished_at,
+                           l.status, l.create_max_memory, l.prune_max_memory,
+                           l.compact_max_memory, l.db_dump_max_memory,
+                           l.db_archive_max_memory, l.db_prune_max_memory,
+                           l.db_compact_max_memory
+                    FROM job_logs l
+                    LEFT JOIN backup_jobs j ON l.job_id = j.id
+                    WHERE l.started_at >= ? AND l.started_at <= ?
+                    ORDER BY l.started_at ASC
+                ''', (since, until))
+                logs = []
+                for row in cursor.fetchall():
+                    mems = [m for m in row[6:] if m is not None]
+                    logs.append({
+                        'id': row[0],
+                        'job_id': row[1],
+                        'job_name': row[2] if row[2] else f"job-{row[1]}",
+                        'started_at': row[3],
+                        'finished_at': row[4],
+                        'status': row[5],
+                        'peak_memory_mb': max(mems) if mems else None,
+                    })
+            finally:
+                conn.close()
+
+            stats = memory_stats()
+            self._send_json_response({
+                'logs': logs,
+                'memory_limit_mb': stats['limit_mb'] if stats else None,
+            })
+        except Exception as e:
+            logger.error(f"Error getting job logs timeline: {e}")
+            self._send_error(500, "Failed to get job logs")
+
+    def _handle_get_system_memory(self):
+        """Return container memory limit/usage (may be null outside a container)."""
+        stats = memory_stats()
+        self._send_json_response(
+            stats if stats else {'limit_mb': None, 'current_mb': None}
+        )
 
     def _handle_browse_sources(self, data):
         """Browse source directory structure."""

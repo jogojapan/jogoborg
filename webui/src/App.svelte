@@ -11,6 +11,7 @@
   import Sources from './screens/Sources.svelte';
   import Jobs from './screens/Jobs.svelte';
   import Notifications from './screens/Notifications.svelte';
+  import Gantt from './screens/Gantt.svelte';
 
   const nav = [
     { path: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -18,6 +19,7 @@
     { path: '/sources', label: 'Source Directories', icon: 'folder' },
     { path: '/jobs', label: 'Backup Jobs', icon: 'jobs' },
     { path: '/notifications', label: 'Notifications', icon: 'notifications' },
+    { path: '/gantt', label: 'Scheduling', icon: 'activity' },
   ];
 
   const titles: Record<string, string> = {
@@ -26,6 +28,7 @@
     '/sources': 'Source Directories',
     '/jobs': 'Backup Jobs',
     '/notifications': 'Notification Settings',
+    '/gantt': 'Scheduling Overview',
   };
 
   // Auth guard: bounce unauthenticated users to login and authenticated users
@@ -98,6 +101,8 @@
           <Jobs />
         {:else if router.path === '/notifications'}
           <Notifications />
+        {:else if router.path === '/gantt'}
+          <Gantt />
         {:else}
           <Dashboard />
         {/if}

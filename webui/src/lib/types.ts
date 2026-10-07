@@ -122,3 +122,24 @@ export interface NotificationSettings {
   smtp_config?: SmtpConfig;
   webhook_config?: WebhookConfig;
 }
+
+// A single backup-job run (for the scheduling Gantt).
+export interface JobRun {
+  id: number;
+  job_id: number;
+  job_name: string;
+  started_at: string; // ISO
+  finished_at: string | null; // null => still running
+  status: string; // running | completed | failed | ...
+  peak_memory_mb: number | null;
+}
+
+export interface TimelineResponse {
+  logs: JobRun[];
+  memory_limit_mb: number | null;
+}
+
+export interface MemorySystemResponse {
+  limit_mb: number | null;
+  current_mb: number | null;
+}

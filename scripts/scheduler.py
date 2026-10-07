@@ -15,6 +15,7 @@ sys.path.append('/app')
 from scripts.backup_executor import BackupExecutor
 from scripts.notification_service import NotificationService
 from scripts.init_gpg import decrypt_data
+from scripts.memory_monitor import memory_stats
 
 class BackupScheduler:
     def __init__(self):
@@ -24,6 +25,17 @@ class BackupScheduler:
         self.running = True
         self.executor = BackupExecutor()
         self.notification_service = NotificationService()
+
+        # Concurrency + memory-gate configuration (env-tunable).
+        self.max_parallel = int(os.environ.get('JOGOBORG_MAX_PARALLEL_JOBS', '4') or 4)
+        self.mem_delay_seconds = int(os.environ.get('JOGOBORG_MEMORY_DELAY_SECONDS', '3600') or 3600)
+        self.mem_delay_threshold = float(os.environ.get('JOGOBORG_MEMORY_DELAY_THRESHOLD', '0.75') or 0.75)
+        self.mem_resume_threshold = float(os.environ.get('JOGOBORG_MEMORY_RESUME_THRESHOLD', '0.70') or 0.70)
+        self.max_parallel = max(1, self.max_parallel)
+
+        # Scheduler runtime state.
+        self._active_job_ids = set()  # job ids currently running in threads
+        self._delayed = {}            # job_id -> {job, reason, next_check, notified}
         
         # Set up logging
         os.makedirs(self.log_dir, exist_ok=True)
@@ -166,54 +178,155 @@ class BackupScheduler:
         except Exception:
             return False
 
+    def _memory_pressure_pct(self):
+        """Return (gated, usage_percent). gated True if container memory usage
+        is at/above the delay threshold. Disabled (False, None) when no limit
+        is available (e.g. local dev, no explicit Docker limit)."""
+        stats = memory_stats()
+        if not stats or not stats['limit_mb'] or stats['current_mb'] is None:
+            return False, None
+        pct = stats['current_mb'] / stats['limit_mb']
+        return pct >= self.mem_delay_threshold, pct
+
+    def _dispatch_job(self, job):
+        """Run a job in its own thread; concurrency is bounded by max_parallel."""
+        job_id = job['id']
+        self._active_job_ids.add(job_id)
+        self._delayed.pop(job_id, None)
+        self.logger.info(f"Starting backup job: {job['name']}")
+
+        def run_job():
+            try:
+                self.executor.execute_job(job)
+                self.logger.info(f"Completed backup job: {job['name']}")
+            except Exception as e:
+                self.logger.error(f"Failed to execute job {job['name']}: {e}")
+                try:
+                    self.notification_service.send_notification(
+                        subject=f"Backup job failed: {job['name']}",
+                        message=f"Job {job['name']} failed with error: {str(e)}",
+                        is_error=True,
+                    )
+                except Exception as notify_error:
+                    self.logger.error(f"Failed to send notification: {notify_error}")
+            finally:
+                self._active_job_ids.discard(job_id)
+
+        thread = threading.Thread(target=run_job, daemon=True)
+        thread.start()
+
+    def _delay_for_memory(self, job, now, pct):
+        """Hold a job because container memory is near its limit; notify once
+        per delay episode with the delay length and current usage."""
+        job_id = job['id']
+        previous = self._delayed.get(job_id)
+        delay_minutes = int(self.mem_delay_seconds / 60)
+        self._delayed[job_id] = {
+            'job': job,
+            'reason': 'memory',
+            'next_check': now + timedelta(seconds=self.mem_delay_seconds),
+            'notified': True,
+        }
+        # Notify on the first delay and again each time the delay elapses
+        # while still gated; suppress repeats within the same delay interval.
+        if previous is None or now >= previous.get('next_check', now):
+            try:
+                self.notification_service.send_notification(
+                    subject=f"Backup job delayed: {job['name']}",
+                    message=(
+                        f"Job '{job['name']}' was due but container memory is "
+                        f"high ({pct * 100:.0f}% of limit). It will be delayed "
+                        f"by {delay_minutes} minutes and checked again then."
+                    ),
+                    is_error=False,
+                )
+            except Exception as notify_error:
+                self.logger.error(f"Failed to send delay notification: {notify_error}")
+
+    def _process_due(self, pending_jobs, now):
+        """Dispatch jobs that are due (parallel), honouring the concurrency
+        cap and the memory gate. Blocked jobs move to the delayed set."""
+        for job in pending_jobs:
+            if not self.running:
+                break
+            job_id = job['id']
+            if job_id in self._active_job_ids or job_id in self._delayed:
+                continue  # already running or already being delayed
+
+            if len(self._active_job_ids) >= self.max_parallel:
+                self.logger.info(
+                    f"At max parallel jobs ({self.max_parallel}); holding {job['name']} for a slot"
+                )
+                self._delayed[job_id] = {
+                    'job': job,
+                    'reason': 'capacity',
+                    'next_check': now,
+                    'notified': False,
+                }
+                continue
+
+            gated, pct = self._memory_pressure_pct()
+            if gated:
+                self.logger.info(
+                    f"Memory pressure {pct * 100:.0f}%; delaying {job['name']}"
+                )
+                self._delay_for_memory(job, now, pct)
+                continue
+
+            self._dispatch_job(job)
+
+    def _process_delayed(self, now):
+        """Start held jobs when a slot is free and memory has room (or after a
+        delay elapses). Memory-delayed jobs notify again on each elapsed delay."""
+        for job_id in list(self._delayed):
+            if job_id in self._active_job_ids:
+                continue
+            entry = self._delayed[job_id]
+            job = entry['job']
+
+            if entry['reason'] == 'capacity':
+                if len(self._active_job_ids) < self.max_parallel:
+                    self._dispatch_job(job)
+                continue
+
+            # memory-gated
+            if len(self._active_job_ids) >= self.max_parallel:
+                continue
+            gated, pct = self._memory_pressure_pct()
+            if gated is not None and pct is not None and pct < self.mem_resume_threshold:
+                # memory freed up; start early
+                self._dispatch_job(job)
+            elif now >= entry['next_check']:
+                # delay elapsed but still gated -> extend and re-notify
+                self._delay_for_memory(job, now, pct if pct is not None else 1.0)
+
     def run(self):
-        """Main scheduler loop."""
+        """Main scheduler loop: dispatch due jobs in parallel, bounded by the
+        concurrency cap and memory gate."""
         self.logger.info("Backup scheduler started")
-        last_checked_minute = None
-        
+        self.logger.info(
+            f"Max parallel jobs: {self.max_parallel}; memory delay threshold: "
+            f"{self.mem_delay_threshold * 100:.0f}%, resume: "
+            f"{self.mem_resume_threshold * 100:.0f}%"
+        )
+
         while self.running:
             try:
                 current_time = datetime.now()
-                current_minute = current_time.replace(second=0, microsecond=0)
-                
-                # Check if we've already checked this minute (avoid duplicate checks)
-                if last_checked_minute != current_minute:
-                    last_checked_minute = current_minute
-                    
-                    # Get jobs that should run now
-                    pending_jobs = self.get_pending_jobs(current_time)
-                    
-                    if pending_jobs:
-                        self.logger.info(f"Found {len(pending_jobs)} pending jobs at {current_time.strftime('%H:%M')}")
-                        
-                        # Run jobs sequentially
-                        for job in pending_jobs:
-                            if not self.running:
-                                break
-                            
-                            self.logger.info(f"Starting backup job: {job['name']}")
-                            
-                            try:
-                                # Execute the backup job
-                                self.executor.execute_job(job)
-                                self.logger.info(f"Completed backup job: {job['name']}")
-                            except Exception as e:
-                                self.logger.error(f"Failed to execute job {job['name']}: {e}")
-                                
-                                # Send failure notification
-                                try:
-                                    self.notification_service.send_notification(
-                                        subject=f"Backup job failed: {job['name']}",
-                                        message=f"Job {job['name']} failed with error: {str(e)}",
-                                        is_error=True
-                                    )
-                                except Exception as notify_error:
-                                    self.logger.error(f"Failed to send notification: {notify_error}")
-                
-                # Sleep for a bit before checking again
-                # We check every 30 seconds to be responsive to minute boundaries
+
+                pending_jobs = self.get_pending_jobs(current_time)
+                if pending_jobs:
+                    self.logger.info(
+                        f"Found {len(pending_jobs)} pending jobs at "
+                        f"{current_time.strftime('%H:%M')}"
+                    )
+                self._process_due(pending_jobs, current_time)
+                self._process_delayed(current_time)
+
+                # We check every 30 seconds to be responsive to minute
+                # boundaries and to pick up freed memory more quickly.
                 time.sleep(30)
-                
+
             except Exception as e:
                 self.logger.error(f"Scheduler error: {e}")
                 time.sleep(60)  # Wait a minute before retrying

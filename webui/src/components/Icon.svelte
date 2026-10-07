@@ -28,6 +28,7 @@
     key: 'M7 7a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM10 11l9-5v5M19 6v4',
     check: 'M5 13l4 4L19 7',
     info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 8v6m0-10v.01',
+    activity: 'M3 12h4l2-7 4 14 2-7h6',
   };
 
   const fillIcons = new Set(['folder', 'file']);
