@@ -22,6 +22,7 @@
   let runs = $state<JobRun[]>([]);
   let limitMb = $state<number | null>(null);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let zoomHours = $state(DEFAULT_ZOOM_HOURS);
   let dataStartMs = $state(0);
   let dataEndMs = $state(0);
@@ -38,6 +39,7 @@
       runs = tl.logs ?? [];
       limitMb = tl.memory_limit_mb ?? mem.limit_mb ?? null;
     } catch (e) {
+      error = errMsg(e);
       toastError(errMsg(e));
     } finally {
       loading = false;
@@ -103,6 +105,15 @@
 <div class="gantt">
   {#if loading}
     <div class="spinner" role="status"></div>
+  {:else if error}
+    <div class="empty-state">
+      <b>Couldn’t load run data</b>
+      <div class="muted small">{error}</div>
+      <div class="muted small">
+        If the backend predates this feature, restart it:
+        <code>./stop_local.sh &amp;&amp; ./run_local.sh</code>
+      </div>
+    </div>
   {:else if runs.length === 0}
     <div class="empty-state">No backup runs in the last 7 days</div>
   {:else}
