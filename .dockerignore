@@ -31,11 +31,6 @@ dist/
 *.tar.gz
 node_modules/
 
-# Flutter specific
-.dart_tool/
-.packages
-pubspec.lock
-
 # Temporary files
 tmp/
 temp/

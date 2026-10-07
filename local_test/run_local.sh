@@ -114,16 +114,8 @@ echo "✓ Services Started Successfully"
 echo "=========================================="
 echo ""
 
-# Check if Flutter build exists
-if [ -f "$PROJECT_ROOT/build/web/index.html" ]; then
-    echo "Web Interface: (Flutter Build)"
-else
-    echo "Web Interface: (Development - API Testing Only)"
-    echo "  Tip: Build Flutter for full UI testing:"
-    echo "       cd $PROJECT_ROOT"
-    echo "       flutter build web"
-    echo "       Then restart ./run_local.sh"
-fi
+# Frontend is served separately by the Vite dev server in webui/
+echo "Web Interface: cd $PROJECT_ROOT/webui && npm run dev"
 
 echo "  URL: $JOGOBORG_URL"
 echo "  Username: $JOGOBORG_WEB_USERNAME"

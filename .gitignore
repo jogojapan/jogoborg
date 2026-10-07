@@ -30,27 +30,6 @@ migrate_working_dir/
 /test_jogoborg_config
 example_source/**
 
-# Flutter/Dart/Pub related
-# Libraries should not include pubspec.lock, per https://dart.dev/guides/libraries/private-files#pubspeclock.
-/pubspec.lock
-**/doc/api/
-**/ios/Flutter/flutter_assets/
-**/ios/Flutter/flutter_export_environment.sh
-**/ios/ServiceDefinitions.json
-**/ios/Runner/GeneratedPluginRegistrant.*
-**/linux/flutter/generated_plugin_registrant.cc
-**/linux/flutter/generated_plugin_registrant.h
-**/macos/Flutter/GeneratedPluginRegistrant.swift
-**/macos/Flutter/flutter_export_environment.sh
-**/windows/flutter/generated_plugin_registrant.cc
-**/windows/flutter/generated_plugin_registrant.h
-**/windows/flutter/flutter_export_environment.sh
-.dart_tool/
-.packages
-.pub-cache/
-.pub/
-.flutter-plugins-dependencies
-
 # Web related
 
 # Symbolication related
