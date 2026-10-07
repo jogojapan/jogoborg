@@ -1,67 +1,58 @@
-# Jogoborg - Borg Backup Management System
+# Jogoborg — Borg Backup Management System
 
-Jogoborg is a comprehensive Docker-based backup solution using BorgBackup with a modern Flutter web interface. It provides automated backup scheduling, S3 integration, database dumps, and notification capabilities.
+Jogoborg is a Docker-based backup solution built on [BorgBackup](https://borgbackup.readthedocs.io/) with a modern Flutter web interface. It automates scheduled backups, repository management, S3/MinIO sync, database dumps, and notifications.
+
+- **Frontend**: Flutter web app (auth-protected UI)
+- **Backend**: Python services (web server, scheduler, backup executor)
+- **Storage**: Borg repositories, SQLite config DB, GPG-encrypted credentials
 
 ## Features
 
-- **Automated Backup Scheduling**: Quarter-hour precision scheduling with cron-style configuration
-- **Borg Repository Management**: Create, manage, and browse Borg backup repositories
-- **Source Directory Browser**: Interactive file tree browser with permissions and size information
-- **Database Integration**: Automated PostgreSQL and MariaDB/MySQL database dumps
-- **S3/MinIO Sync**: Automatic repository synchronization to S3-compatible storage
-- **Memory Monitoring**: Real-time memory usage tracking during backup operations
-- **Notification System**: SMTP email and webhook (Gotify) notifications
-- **Web Interface**: Modern Flutter web UI with authentication
-- **Secure Configuration**: GPG-encrypted credential storage
+- **Automated scheduling** — cron-style jobs restricted to quarter-hour starts
+- **Borg repository management** — create, manage, and browse repositories
+- **Source directory browser** — interactive file tree with permissions and sizes
+- **Database dumps** — PostgreSQL and MariaDB/MySQL before backup
+- **S3/MinIO sync** — automatic repository sync to S3-compatible storage
+- **Pre/post commands** — run custom commands (incl. Docker) around backups
+- **Memory monitoring** — peak memory tracked per operation
+- **Notifications** — SMTP email and Gotify webhook
+- **Secure config** — GPG-encrypted credentials at rest
 
-## Quick Start
+## Quick Start (Docker)
 
 ### Environment Variables
 
-All Jogoborg environment variables are prefixed with `JOGOBORG_` to avoid conflicts with other containers.
+All Jogoborg variables are prefixed with `JOGOBORG_` to avoid clashes with other containers sharing a compose file. Unprefixed legacy equivalents still work but print deprecation warnings.
 
-#### Required
-- `JOGOBORG_WEB_USERNAME`: Web interface username (default: admin)
-- `JOGOBORG_WEB_PASSWORD`: Web interface password (default: changeme)
-- `JOGOBORG_GPG_PASSPHRASE`: Encryption passphrase for credentials (default: changeme)
-- `JOGOBORG_URL`: The base URL of the service. This will be https://my.domain.tld if you are using a reverse proxy, or http://localhost:<port> if you have a local HTTP connection and <port> is the port you are exposing based on your docker-compose config. The frontend will be available on this URL. The backend will be at $JOGOBORG_URL/api.
+| Variable | Default | Required | Purpose |
+|----------|---------|:---:|---------|
+| `JOGOBORG_WEB_USERNAME` | `admin` | | Web UI login username |
+| `JOGOBORG_WEB_PASSWORD` | `changeme` | | Web UI login password |
+| `JOGOBORG_GPG_PASSPHRASE` | `changeme` | | Encryption passphrase for credentials |
+| `JOGOBORG_URL` | | ✓ | Public base URL, e.g. `https://my.domain.tld` (proxy) or `http://localhost:8080`. Frontend serves here; backend at `$JOGOBORG_URL/api`. |
+| `JOGOBORG_WEB_PORT` | `8080` | | Port **inside** the container; the host port is set in your compose mapping. |
 
-#### Optional
-- `JOGOBORG_WEB_PORT`: Web interface port (default: 8080). This is the port used inside the container. Outside the container the port is one you are exposing based on your docker-compose config.
+**Legacy variables** (`WEB_USERNAME`, `WEB_PASSWORD`, `GPG_PASSPHRASE`, `URL`, `WEB_PORT`) are still read but deprecated — prefer the prefixed forms.
 
-#### Legacy Support
-For backward compatibility, the old unprefixed variables (`WEB_USERNAME`, `WEB_PASSWORD`, etc.) are still supported but will show deprecation warnings. Use the `JOGOBORG_` prefixed versions for new deployments.
-
-### Docker Compose Example
+### docker-compose.yml
 
 ```yaml
-version: '3.8'
-
 services:
   jogoborg:
     image: jogoborg:latest
     container_name: jogoborg
     ports:
-      - "8080:8080"  # Change to "host_port:container_port" as needed
+      - "8080:8080"          # host_port:container_port
     volumes:
-      # Source directories to backup (read-only recommended)
-      - /path/to/source1:/sourcespace/source1:ro
-      - /path/to/source2:/sourcespace/source2:ro
-      
-      # Borg repositories storage
-      - /path/to/borg/repos:/borgspace
-      
-      # Configuration and database
-      - jogoborg_config:/config
-      
-      # Logs
+      - /path/to/source1:/sourcespace/source1:ro   # data to back up (read-only recommended)
+      - /path/to/borg/repos:/borgspace              # Borg repositories
+      - jogoborg_config:/config                     # config DB + encrypted credentials
       - jogoborg_logs:/log
     environment:
-      - WEB_USERNAME=admin
-      - WEB_PASSWORD=your_secure_password
-      - GPG_PASSPHRASE=your_encryption_key
+      - JOGOBORG_WEB_USERNAME=admin
+      - JOGOBORG_WEB_PASSWORD=your_secure_password
+      - JOGOBORG_GPG_PASSPHRASE=your_encryption_key
       - JOGOBORG_URL=https://my.domain.tld
-      - WEB_PORT=8080
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -75,7 +66,9 @@ volumes:
   jogoborg_logs:
 ```
 
-### Docker Run Example
+> **SELinux systems** (RHEL/CentOS/Fedora): append `:Z` to volume mounts, e.g. `-v /path:/sourcespace/source:ro,z`.
+
+### docker run
 
 ```bash
 docker run -d \
@@ -91,22 +84,6 @@ docker run -d \
   jogoborg:latest
 ```
 
-**For SELinux systems (RHEL, CentOS, Fedora), add `:Z` to volume mounts:**
-
-```bash
-docker run -d \
-  --name jogoborg \
-  -p 8080:8080 \
-  -v /path/to/source:/sourcespace/source:ro,z \
-  -v /path/to/borg/repos:/borgspace:Z \
-  -v jogoborg_config:/config:Z \
-  -v jogoborg_logs:/log:Z \
-  -e JOGOBORG_WEB_USERNAME=admin \
-  -e JOGOBORG_WEB_PASSWORD=your_secure_password \
-  -e JOGOBORG_GPG_PASSPHRASE=your_encryption_key \
-  jogoborg:latest
-```
-
 ## Building the Image
 
 ```bash
@@ -115,296 +92,218 @@ cd jogoborg
 docker build -t jogoborg:latest .
 ```
 
-## Directory Structure
+## Directories & Volumes
 
-### Container Directories
+| Path | Purpose | Recommendation |
+|------|---------|----------------|
+| `/sourcespace` | Mount source directories here for backup | Read-only (`:ro`) |
+| `/borgspace` | Borg repositories | Dedicated volume, adequate space |
+| `/config` | SQLite DB + encrypted settings | Named volume |
+| `/log` | Application and job logs | Named volume |
 
-- `/sourcespace`: Mount your source directories here for backup
-- `/borgspace`: Borg repositories are stored here
-- `/config`: Configuration files, database, and encrypted settings
-- `/log`: Application and job logs
+## Configuration (Web UI)
 
-### Host Volume Recommendations
+Open the web interface at `http://your-host:<port>`, log in, then use the sections:
 
-- **Source directories**: Mount as read-only (`:ro`) for security
-- **Borg repositories**: Use a dedicated volume or directory with adequate space
-- **Config/Logs**: Use named volumes for persistence
+- **Repositories** — view/manage Borg repositories
+- **Source Directories** — browse the source file tree
+- **Backup Jobs** — configure and monitor jobs
+- **Notifications** — SMTP and webhook setup
 
-## Configuration
+### Backup Job Settings
 
-### Web Interface
+**Basic**
+- **Name** — unique identifier
+- **Schedule** — cron expression (must start at `0/15/30/45`), see below
+- **Compression** — Borg algorithm (default `lz4`)
+- **Exclude patterns** — one per line
+- **Retention** — keep daily/monthly/yearly archive counts
 
-1. Access the web interface at `http://your-host:8080`
-2. Login with your configured username and password
-3. Navigate through the sections:
-   - **Repositories**: View and manage Borg repositories
-   - **Source Directories**: Browse source file tree
-   - **Backup Jobs**: Configure and monitor backup jobs
-   - **Notifications**: Setup SMTP and webhook notifications
+**Advanced**
+- **S3 sync** — Amazon S3 (access key, secret key, storage class) or MinIO (custom endpoint)
+- **Database dumps** — PostgreSQL or MariaDB/MySQL host, port, credentials, optional table filter; built-in connection test
+- **Pre/Post commands** — run before/after the backup (e.g. `docker stop myservice`); 5 min timeout; non-zero exit logged as warning, does **not** fail the backup
 
-### Backup Job Configuration
-
-#### Basic Settings
-- **Name**: Unique identifier for the job
-- **Schedule**: Cron expression (must start at quarter hours: 0, 15, 30, 45)
-- **Compression**: Borg compression algorithm (default: lz4)
-- **Exclude Patterns**: File patterns to exclude (one per line)
-- **Retention**: Keep daily/monthly/yearly archive counts
-
-#### Advanced Features
-
-##### S3 Synchronization
-Configure automatic repository sync to S3-compatible storage:
-- **Amazon S3**: Specify access key, secret key, and storage class
-- **MinIO**: Specify custom endpoint, access credentials
-
-##### Database Dumps
-Include database dumps in your backups:
-- **PostgreSQL**: Host, port, credentials, specific tables
-- **MariaDB/MySQL**: Host, port, credentials, specific tables
-- Built-in connection testing
-
-##### Pre/Post Commands
-Execute custom commands before and after backups:
-- **Pre-Command**: Runs before backup starts (e.g., `docker stop myservice`)
-- **Post-Command**: Runs after backup completes (success or failure, e.g., `docker start myservice`)
-- **Docker Support**: Docker CLI is available for container management
-- **Timeout**: Commands timeout after 5 minutes
-- **Error Handling**: Non-zero exit codes are logged as warnings but don't fail the backup
-
-**Docker Commands**: The container includes Docker CLI and mounts the Docker socket, allowing commands like:
-- `docker stop mycontainer`
-- `docker exec mycontainer /app/maintenance.sh`
-- `docker-compose -f /path/to/compose.yml stop service`
-
-This will only work if the container has access to /var/run/docker.sock and is a member of the docker Linux group. If the host is running SELinux, you also need to the `label=type:container_runtime_t` security option. See `docker-compose.yml` (entries for `group_add`, `security_opt` and `/var/run/docker.sock`) for examples of how to make this work).
+> **Docker commands in jobs**: the container ships the Docker CLI and can mount the Docker socket, enabling `docker stop …`, `docker exec …`, or `docker-compose …` — provided the container has `/var/run/docker.sock` and is in the `docker` group. On SELinux you also need the `label=type:container_runtime_t` security option. See `docker-compose.yml` (`group_add`, `security_opt`, socket mount) for the working configuration.
 
 ### Schedule Format
 
-Backup jobs use cron syntax but are restricted to quarter-hour starts:
+Cron syntax restricted to quarter-hour starts.
 
-**Valid minute values**: `0`, `15`, `30`, `45`, `*/15`
+- **Valid minutes**: `0`, `15`, `30`, `45`, `*/15`
+- Valid: `0 2 * * *` (daily 02:00), `30 */6 * * *` (every 6h), `*/15 * * * *` (every 15 min)
+- Invalid: `5 2 * * *` (minute 5), `*/10 * * * *` (10-min intervals)
 
-**Examples**:
-- `0 2 * * *` - Daily at 2:00 AM
-- `30 */6 * * *` - Every 6 hours at 30 minutes past
-- `*/15 * * * *` - Every 15 minutes
+### Notifications
 
-**Invalid examples**:
-- `5 2 * * *` - Invalid (minute 5 not allowed)
-- `*/10 * * * *` - Invalid (10-minute intervals not supported)
+**SMTP**: host, port (`587` STARTTLS / `465` SSL), security mode, user/password, sender email, optional recipient (defaults to sender).
+**Webhook (Gotify)**: message endpoint URL, application token, distinct priority levels for success/error.
 
-## Notification Configuration
+## Security
 
-### SMTP Email
-- **Host**: SMTP server hostname
-- **Port**: SMTP port (587 for STARTTLS, 465 for SSL)
-- **Security**: STARTTLS, SSL/TLS, or None
-- **Username/Password**: SMTP authentication
-- **Sender Email**: Email address to send notifications from
-- **Recipient Email**: Email address to receive notifications (optional, defaults to sender)
-
-### Webhook (Gotify)
-- **URL**: Gotify message endpoint
-- **Token**: Application token
-- **Priority Levels**: Different priorities for success/error messages
-
-## Security Considerations
-
-### Credential Storage
-- All sensitive credentials are encrypted using GPG with your passphrase
-- Database credentials, S3 keys, and SMTP passwords are encrypted at rest
-- Encryption key is derived from the `GPG_PASSPHRASE` environment variable
+- All credentials (DB, S3 keys, SMTP passwords, admin password) are encrypted at rest with GPG; the key is derived from `JOGOBORG_GPG_PASSPHRASE`.
+- Borg repositories use encryption (repokey mode); repository keys are entered via the web UI.
+- Default passphrases (`changeme`) must be changed in production.
+- Web UI requires authentication; use HTTPS via reverse proxy in production.
 
 ### Environment Variable Escaping
-**Important:** When using special characters in passwords (especially `$`, `` ` ``, `\`), you must **quote them** to prevent shell expansion.
 
-**Example - DO NOT do this:**
+Special characters (`$`, backtick, `\`) in passwords **must be quoted** to avoid shell expansion.
+
 ```yaml
-environment:
-  - JOGOBORG_WEB_PASSWORD=my$secure@pass  # Wrong! $secure will be expanded
+# Wrong — $secure is expanded:
+#   - JOGOBORG_WEB_PASSWORD=my$secure@pass
+# Correct — single quotes prevent expansion:
+  - JOGOBORG_WEB_PASSWORD='my$secure@pass'
 ```
 
-**Example - DO THIS instead:**
-```yaml
-environment:
-  - JOGOBORG_WEB_PASSWORD='my$secure@pass'  # Correct! Single quotes prevent expansion
-```
+Same in `.env` files:
 
-The same applies to `.env` files:
 ```bash
-# .env file
-JOGOBORG_WEB_PASSWORD='my$ecure@Pass123'  # Use single quotes for special characters
+JOGOBORG_WEB_PASSWORD='my$ecure@Pass123'
 JOGOBORG_GPG_PASSPHRASE='my$encryption$key'
 ```
 
-### Repository Access
-- Borg repositories use encryption (repokey mode)
-- Default passphrase is 'changeme' - **change this in production**
-- Repository keys are entered through the web interface
-
-### Network Security
-- Web interface requires authentication
-- Consider using reverse proxy with HTTPS in production
-- Restrict network access to the container
-
 ## Backup Process
 
-### Execution Flow
-1. **Pre-command**: Optional command execution
-2. **Memory monitoring**: Start tracking memory usage
-3. **Borg create**: Create archive with specified compression and exclusions
-4. **Borg prune**: Remove old archives based on retention policy
-5. **Borg compact**: Compact repository to reclaim space
-6. **Database dumps**: Create and backup database dumps (if configured)
-7. **S3 sync**: Synchronize repository to S3 (if configured)
-8. **Post-command**: Optional command execution
-9. **Logging**: Record duration, memory usage, and status
-10. **Notifications**: Send success/failure notifications
+1. Pre-command (optional) → 2. memory monitoring starts → 3. `borg create` (compression, exclusions) → 4. `borg prune` (retention) → 5. `borg compact` → 6. database dumps → 7. S3 sync → 8. post-command (optional) → 9. duration/memory/status logged → 10. notifications.
 
-### Memory Monitoring
-- Real-time tracking of Borg process memory usage
-- Maximum memory consumption logged for each operation
-- Helps with resource planning and optimization
+Each job gets its own log file; memory usage is tracked live during Borg operations.
 
-### Logging
-- Separate log file for each backup job
-- Centralized scheduler and web server logs
-- Includes timestamps, durations, memory usage, and error details
+## Monitoring & Health
 
-## Monitoring and Health Checks
+- `GET /health` — returns service status (used by Docker healthcheck)
+- Job logs: `/log/<job-name>.log`; scheduler: `/log/scheduler.log`; web server: `/log/web_server.log`
+- Metrics: backup duration, peak memory, success/failure, repository sizes, archive counts
 
-### Health Check Endpoint
-- `GET /health`: Returns service status
-- Used by Docker health checks
-- Monitor service availability
+## Local Development & Testing
 
-### Log Monitoring
-- Job-specific logs in `/log/<job-name>.log`
-- Scheduler log in `/log/scheduler.log`
-- Web server log in `/log/web_server.log`
+For fast iteration without rebuilding the Docker image, run the same services directly on your machine from `local_test/`. The local environment mirrors the container layout (`config/`, `borgspace/`, `logs/`, `sourcespace/`) and uses the identical codebase.
 
-### Metrics Available
-- Backup duration and memory usage
-- Success/failure rates
-- Repository sizes and archive counts
+### Prerequisites
+
+- Python 3.7+, SQLite 3, **borg**, **gpg**, and the Python packages `cryptography`, `croniter`, `requests` (`make install-deps` or `pip install -r requirements.txt`)
+- Flutter (optional) only if you build the web UI locally — see *Development workflow* below
+
+### Quick Start
+
+```bash
+# From the project root — create and activate a virtual environment (recommended)
+python3 -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+
+cd local_test
+./setup.sh        # one-time: dirs, SQLite DB, GPG key, sample data, env.local
+./run_local.sh    # start web server (8080) + scheduler in the background
+# Open http://localhost:8080     login: testuser / testpass123 (from env.local)
+
+./stop_local.sh   # stop services when done
+```
+
+`setup.sh` warns (but does not block) if you are not in a virtual environment. Reset everything with `./reset_test_data.sh`.
+
+### Make Targets (`local_test/Makefile`)
+
+| Category | Targets |
+|----------|---------|
+| Venv | `venv`, `venv-activate`, `venv-clean` |
+| Services | `setup`, `start`, `stop`, `restart`, `status`, `reset` |
+| Logs | `logs-web`, `logs-scheduler`, `logs-all`, `logs-show-web`, `logs-show-scheduler`, `logs-clear` |
+| Database | `db-jobs`, `db-logs`, `db-count`, `db-clear-logs`, `db-clear-jobs`, `db-shell` |
+| Repositories | `repos`, `repos-size` |
+| Source data | `source-data`, `source-size`, `test-file SIZE=500M` |
+| API | `api-health`, `api-jobs`, `api-repos` |
+| Docker | `docker-build`, `docker-run`, `docker-stop`, `docker-logs` |
+| Dev | `dev-help`, `check-deps`, `install-deps`, `info`, `clean`, `test-backup`, `test-scheduler` |
+
+`make help` lists all targets; `make test-file SIZE=100M` adds a large test file to the sample source data.
+
+### Development Helpers
+
+```bash
+source local_test/dev_helpers.sh    # then:
+status                # service + env status
+db_list_jobs          # list backup jobs
+db_list_job_logs      # recent job execution logs
+tail_all_logs         # follow all logs
+api_list_jobs         # jobs via HTTP API
+quick_restart         # stop + start
+```
+
+### Local Environment Variables (`local_test/env.local`)
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `JOGOBORG_WEB_PORT` | `8080` | Web server port |
+| `JOGOBORG_WEB_USERNAME` | `testuser` | Login username |
+| `JOGOBORG_WEB_PASSWORD` | `testpass123` | Login password |
+| `JOGOBORG_GPG_PASSPHRASE` | test key | Encryption key |
+| `JOGOBORG_URL` | `http://localhost:8080` | Service URL |
+| `JOGOBORG_CONFIG_DIR` | `./config` | Config + SQLite DB + GPG |
+| `JOGOBORG_BORGSPACE_DIR` | `./borgspace` | Borg repositories |
+| `JOGOBORG_LOG_DIR` | `./logs` | Logs |
+| `JOGOBORG_SOURCESPACE_DIR` | `./sourcespace` | Source data |
+| `JOGOBORG_LOG_LEVEL` | — | `DEBUG/INFO/WARNING/ERROR` |
+| `JOGOBORG_DEV_AUTO_RELOAD`, `JOGOBORG_DEV_VERBOSE` | — | Development tuning |
+
+### Development Workflow
+
+- **Python** (`scripts/`): stop → edit → `make start` (changes take effect on restart; `JOGOBORG_DEV_AUTO_RELOAD` enables live reload).
+- **Flutter** (`lib/`): edit → `flutter build web --release` from the project root → refresh the browser. If no Flutter build exists, the server falls back to the dev API interface (`index-dev.html`).
+- **Verify a backup**: `make start` → create job in the UI → "Run Now" → `make logs-scheduler` + `make db-logs` + `make repos`.
+
+### Local vs Docker
+
+| Aspect | Local | Docker |
+|--------|-------|--------|
+| Setup | `./setup.sh` | compose up |
+| Isolation | shared system | containerized |
+| Paths | `local_test/…` | `/config`, `/borgspace`, … |
+| Logs | `local_test/logs` | named volumes |
+| Iteration | instant | image rebuild |
 
 ## Troubleshooting
 
-### Common Issues
+### Deployment
 
-#### Backup Job Not Running
-1. Check job schedule format (must use quarter-hour minutes)
-2. Verify source directories are accessible
-3. Check scheduler logs: `docker logs jogoborg | grep scheduler`
+- **Job not running** — check quarter-hour schedule; verify source dirs accessible; `docker logs jogoborg | grep scheduler`.
+- **Repository access errors** — verify encryption passphrase, `borgspace` permissions, repo initialized.
+- **S3 sync failures** — check credentials/permissions, network, AWS CLI config.
+- **Database connection issues** — use the "Test Connection" button; check DB host reachability from the container and DB user grants.
+- **Notification failures** — test SMTP/webhook in the UI; check network and credentials.
+- **Missing DB migration** — run manually inside the container:
+  ```bash
+  docker-compose exec jogoborg python3 scripts/init_db.py
+  ```
+  (replace `jogoborg` with your container name).
 
-#### Repository Access Errors
-1. Verify correct encryption passphrase
-2. Check repository permissions in `/borgspace`
-3. Ensure repository was properly initialized
+### Local Environment
 
-#### S3 Sync Failures
-1. Verify S3 credentials and permissions
-2. Check network connectivity
-3. Review AWS CLI configuration and environment in logs
+- **Services won't start** — `make check-deps`; ensure Python + `cryptography`/`croniter`/`requests`; check port with `lsof -i :8080`.
+- **Port in use** — kill the process or change `JOGOBORG_WEB_PORT` in `env.local`.
+- **Database locked** — `make stop`, wait ~2s, `make start`.
+- **Permission denied on scripts** — `chmod +x *.sh`.
+- **GPG key issues** — remove `config/jogoborg.gpg`, restart; it regenerates.
 
-#### Database Connection Issues
-1. Use the "Test Connection" button in the web interface
-2. Verify database host accessibility from container
-3. Check database user permissions
+### Recovery
 
-#### Notification Failures
-1. Test SMTP/webhook configuration in web interface
-2. Check network connectivity
-3. Verify credentials and server settings
+- **Repositories** — standard Borg recovery; restore from S3 sync.
+- **Configuration** — stored in `/config`; schema auto-recreated if missing; GPG key regenerated if absent.
 
-#### Missing Database Migration
-Should you get errors about missing or incomplete database migrations
-in the docker log, you may want to run a DB migration in the container
-manually:
+## Performance Notes
 
-``` bash
-docker-compose exec jogoborg python3 scripts/init_db.py
-```
+- First backup is slower (repo init). Memory varies with repo size and compression; monitor peak usage in job logs.
+- Stagger jobs and prefer off-peak hours; use appropriate compression (Borg dedup + periodic compaction saves space).
 
-(Replace `jogoborg` with the name you are using for the container.)
+## Migration
 
-### Log Locations
-- Application logs: `/log/` directory in container
-- Access via: `docker exec jogoborg tail -f /log/scheduler.log`
-
-### Recovery Procedures
-
-#### Repository Recovery
-1. Use standard Borg commands to recover repositories
-2. Mount repository volume to another container if needed
-3. S3 sync allows repository restoration from cloud storage
-
-#### Configuration Recovery
-1. Configuration is stored in `/config` volume
-2. Database schema is automatically recreated if missing
-3. GPG key is regenerated if not present
-
-## Performance Optimization
-
-### Resource Usage
-- Memory usage varies with repository size and compression
-- Monitor maximum memory consumption in job logs
-- Adjust container memory limits based on usage patterns
-
-### Scheduling Optimization
-- Stagger backup jobs to avoid resource conflicts
-- Consider off-peak hours for large backups
-- Use appropriate compression algorithms for your data
-
-### Storage Optimization
-- Configure appropriate retention policies
-- Use Borg's deduplication capabilities
-- Regular repository compaction reduces storage usage
-
-## Advanced Configuration
-
-### Custom Borg Options
-- Modify compression settings per job
-- Use exclude patterns for fine-grained control
-- Leverage Borg's built-in deduplication
-
-### Integration with Other Systems
-- Use pre/post commands for complex workflows
-- Integrate with monitoring systems via webhooks
-- Coordinate with other containers using Docker networks
-
-### Backup Validation
-- Regular restore testing recommended
-- Use Borg's verification features
-- Monitor backup sizes and file counts for anomalies
-
-## Migration from Other Backup Systems
-
-### From rsync/tar
-1. Create new backup jobs with same source directories
-2. Gradually phase out old backup methods
-3. Leverage Borg's superior compression and deduplication
-
-### From other Borg setups
-1. Copy existing repositories to `/borgspace`
-2. Configure jobs to match existing schedules
-3. Update repository passphrases in web interface
+- **From rsync/tar** — create jobs pointing at the same sources; phase out the old method gradually.
+- **From another Borg setup** — copy existing repos into `/borgspace`, configure matching schedules, re-enter passphrases in the UI.
 
 ## Contributing
 
-This project is designed to be extensible:
-- Flutter web interface for additional features
-- Python backend services for new integrations
-- Docker-based deployment for easy updates
+See [AGENTS.md](AGENTS.md) for the architecture, code layout, and conventions used by maintainers and automated agents.
 
 ## License
 
-MIT License. See LICENSE file.
-
-## Support
-
-For issues and feature requests:
-1. Check troubleshooting section
-2. Review logs for error details
-3. Consult Borg documentation for backup-specific issues
+MIT — see [LICENSE](LICENSE).

@@ -256,7 +256,7 @@ install-deps: ## Install Python dependencies
 # ============================================================================
 
 docs: ## Show documentation
-	@less README.md
+	@less ../README.md
 
-docs-testing: ## Show testing approach documentation
-	@less ../TESTING_APPROACH.md
+docs-testing: ## Show maintainer/agent documentation
+	@less ../AGENTS.md
