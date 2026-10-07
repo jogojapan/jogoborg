@@ -90,10 +90,14 @@
       source_directories: sourceDirs,
       pre_command: preCommand,
       post_command: postCommand,
-      repository_passphrase: passphrase,
       s3_config: s3Config,
       db_config: dbConfig,
     };
+    // Send the passphrase only when creating a job, or when the user enters a
+    // new one on edit (backend keeps the stored value otherwise).
+    if (!isEditing || passphrase) {
+      payload.repository_passphrase = passphrase;
+    }
     try {
       if (isEditing && job) {
         await api.put(`/jobs/${job.id}`, payload, auth.token);
@@ -132,17 +136,28 @@
       {/if}
     </div>
   {/if}
-  {#if !isEditing}
-    <div class="field">
+  <div class="field">
+    {#if !isEditing}
       <label for="job-pass">Repository Passphrase</label>
       <input
         id="job-pass"
         type="password"
         bind:value={passphrase}
+        autocomplete="new-password"
+        required
         placeholder="Enter a strong passphrase for Borg encryption"
       />
-    </div>
-  {/if}
+    {:else}
+      <label for="job-pass">Repository Passphrase (leave empty to keep current)</label>
+      <input
+        id="job-pass"
+        type="password"
+        bind:value={passphrase}
+        autocomplete="new-password"
+        placeholder="Only if you need to change it"
+      />
+    {/if}
+  </div>
   <div class="grid cols-2">
     <div class="field">
       <label for="job-comp">Compression</label>

@@ -87,7 +87,8 @@ export interface JobPayload {
   source_directories: string[];
   pre_command: string;
   post_command: string;
-  repository_passphrase: string;
+  // Required on create; omitted on edit to keep the stored passphrase.
+  repository_passphrase?: string;
   s3_config: S3Config | null;
   db_config: DbConfig | null;
 }

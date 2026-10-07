@@ -569,12 +569,16 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 else:
                     logger.warning(f"No repository_passphrase in update request for job {job_id}")
                 
+                # Update all fields except repository_passphrase. The passphrase
+                # is only touched when a non-empty one is supplied, so an edit
+                # that doesn't change it preserves the stored (encrypted) one
+                # instead of wiping it.
                 cursor.execute('''
                 UPDATE backup_jobs SET
                     name = ?, schedule = ?, compression = ?, exclude_patterns = ?,
                     keep_daily = ?, keep_monthly = ?, keep_yearly = ?,
                     source_directories = ?, pre_command = ?, post_command = ?,
-                    s3_config = ?, db_config = ?, repository_passphrase = ?
+                    s3_config = ?, db_config = ?
                 WHERE id = ?
                 ''', (
                     data['name'],
@@ -589,10 +593,14 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     data.get('post_command'),
                     s3_config_encrypted,
                     db_config_encrypted,
-                    repository_passphrase_encrypted,
                     job_id
                 ))
-                
+
+                if data.get('repository_passphrase'):
+                    cursor.execute('''
+                    UPDATE backup_jobs SET repository_passphrase = ? WHERE id = ?
+                    ''', (repository_passphrase_encrypted, job_id))
+
                 conn.commit()
                 
                 if cursor.rowcount == 0:
