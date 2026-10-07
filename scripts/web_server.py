@@ -1255,6 +1255,15 @@ def run_server():
     if not JOGOBORG_WEB_PASSWORD:
         logger.warning("JOGOBORG_WEB_PASSWORD environment variable not set or empty. Authentication will not work.")
 
+    # Ensure the database schema exists/is up to date so a restart that skips
+    # the standalone init_db step still works (schema/migration is idempotent).
+    try:
+        from scripts.init_db import init_database
+        init_database()
+        logger.info("Database schema checked / migrated")
+    except Exception as e:
+        logger.error(f"Database init/migration failed at startup: {e}")
+
     server = HTTPServer(('0.0.0.0', port), JogoborgHTTPHandler)
     logger.info(f"Starting Jogoborg web server on port {port}")
     

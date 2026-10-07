@@ -10,6 +10,7 @@
 
   let jobs = $state<Job[]>([]);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let showForm = $state(false);
   let editing = $state<Job | null>(null);
 
@@ -21,7 +22,9 @@
     try {
       const res = await api.get<{ jobs: Job[] }>('/jobs', auth.token);
       jobs = res.jobs ?? [];
+      error = null;
     } catch (e) {
+      error = errMsg(e);
       toastError('Failed to load jobs: ' + errMsg(e));
     } finally {
       loading = false;
@@ -73,6 +76,11 @@
 
 {#if loading}
   <div class="spinner"></div>
+{:else if error}
+  <div class="empty-state">
+    <b>Couldn’t load jobs</b>
+    <div class="muted small">{error}</div>
+  </div>
 {:else if jobs.length === 0}
   <div class="empty-state">No backup jobs yet</div>
 {:else}

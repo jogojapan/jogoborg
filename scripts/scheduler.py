@@ -338,6 +338,14 @@ SELECT id, name, repository, schedule, compression, exclude_patterns,
         self.running = False
 
 def main():
+    # Ensure the schema exists/up to date so a restart that skips the standalone
+    # init_db step still works (idempotent).
+    try:
+        from scripts.init_db import init_database
+        init_database()
+    except Exception as e:
+        logging.error(f"Database init/migration failed at startup: {e}")
+
     scheduler = BackupScheduler()
     
     try:

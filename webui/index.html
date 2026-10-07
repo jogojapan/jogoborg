@@ -7,6 +7,16 @@
   <meta name="theme-color" content="#1976d2" />
   <title>Jogoborg</title>
   <script>
+    // The old Flutter web app registered a service worker. Unregister any
+    // leftover service workers so stale cached code (e.g.
+    // flutter_service_worker.js) can't interfere.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (reg) { reg.unregister(); });
+      }).catch(function () {});
+    }
+  </script>
+  <script>
     // Public base URL. JOGOBORG_URL_PLACEHOLDER is replaced by the container
     // entrypoint at start time; fall back to the current origin otherwise
     // (covers the local dev server and direct local access).
