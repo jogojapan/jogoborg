@@ -8,6 +8,8 @@ import stat
 from datetime import datetime, timezone, timedelta
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
+import re
+import time
 import subprocess
 import threading
 import hashlib
@@ -39,6 +41,14 @@ log_dir = os.environ.get('JOGOBORG_LOG_DIR', '/log')
 os.makedirs(log_dir, exist_ok=True)
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
+
+# Module-level (shared across HTTP handler instances) cache for archive
+# browsing: (repo_path, archive) -> {'base', 'ts', 'dirs': {path: [items]}}.
+# BaseHTTPRequestHandler is instantiated per request, so this must not live on
+# the instance.
+_ARCHIVE_BROWSE_CACHE = {}
+_ARCHIVE_BROWSE_TTL = 1800
+_ARCHIVE_BROWSE_MAX_DIRS = 10000
 
 handler = RotatingFileHandler(
     os.path.join(log_dir, 'web_server.log'),
@@ -148,6 +158,13 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             elif path.startswith('/api/repositories/') and path.endswith('/unlock'):
                 repo_id = path.split('/')[-2]
                 self._handle_unlock_repository(repo_id, data)
+            elif path.startswith('/api/repositories/') and path.endswith('/browse'):
+                parts = path.split('/')
+                # ['', 'api', 'repositories', <id>, 'archives', <archive>, 'browse']
+                if len(parts) == 7:
+                    self._handle_browse_archive(parts[3], parts[5], data)
+                else:
+                    self._send_error(404, "Not found")
             elif path == '/api/notifications/test/smtp':
                 self._handle_test_smtp(data)
             elif path == '/api/notifications/test/webhook':
@@ -389,42 +406,206 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             logger.error(f"Error creating repository: {e}")
             self._send_error(500, "Failed to create repository")
 
+    def _find_repository(self, repo_id):
+        """Locate a repository in borgspace by its (hash-derived) id.
+        Returns (repo_path, repo_name) or (None, None)."""
+        borgspace = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
+        try:
+            repo_id = int(repo_id)
+        except (TypeError, ValueError):
+            return None, None
+        if os.path.isdir(borgspace):
+            for item in os.listdir(borgspace):
+                if hash(item) % 10000 == repo_id:
+                    return os.path.join(borgspace, item), item
+        return None, None
+
+    def _stored_passphrase(self, repo_path):
+        """Return the decrypted stored passphrase for a repo path, or None."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            row = conn.execute(
+                "SELECT encrypted_passphrase FROM repositories WHERE path = ?",
+                (repo_path,),
+            ).fetchone()
+            conn.close()
+            if row and row[0]:
+                return decrypt_data(row[0])
+        except Exception as e:
+            logger.error(f"Failed to read stored passphrase for {repo_path}: {e}")
+        return None
+
+    def _resolve_key(self, repo_path, provided):
+        """A usable encryption key: the provided one, else the stored
+        (decrypted) passphrase, else None."""
+        if provided:
+            return provided
+        return self._stored_passphrase(repo_path)
+
+    # --- archive browsing -------------------------------------------------
+
+    def _borg_list(self, repo_path, archive, key, subpath=None):
+        """Run `borg list --json-lines` and return the parsed entries, or
+        None on failure."""
+        cmd = ['borg', 'list', '--json-lines', f'{repo_path}::{archive}']
+        if subpath:
+            cmd.append(subpath)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            env=dict(os.environ, BORG_PASSPHRASE=key),
+            timeout=300,
+        )
+        if result.returncode != 0:
+            return None
+        entries = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return entries
+
+    @staticmethod
+    def _archive_base(entries):
+        """Common path prefix of all archive entries.
+
+        Borg stores paths relative to the archive root but prefixed by the
+        source path given to `borg create`, including that source directory
+        itself as a 'd' entry. We take the deepest path that all entries share
+        so the browser starts at the source directory's contents rather than
+        the host path. If that common path is itself a single file, collapse
+        it to its parent so the file shows as a root child."""
+        paths = [e.get('path', '').replace('\\', '/') for e in entries]
+        paths = [p for p in paths if p]
+        if not paths:
+            return ''
+        base = os.path.commonpath(paths).replace('\\', '/')
+        files = {e.get('path', '').replace('\\', '/') for e in entries if e.get('type') != 'd'}
+        if base in files and os.path.dirname(base):
+            base = os.path.dirname(base)
+        return base
+
+    @staticmethod
+    def _archive_children(entries, base, display_path):
+        """First-level children of display_path from a borg listing."""
+        seg = display_path.strip('/').replace('\\', '/')
+        base_part = base.strip('/')
+        real = base_part + ('/' + seg if seg else '')
+        prefix = real.rstrip('/')
+        prefix_full = (prefix + '/') if prefix else ''
+        items = []
+        for e in entries:
+            p = e.get('path', '').replace('\\', '/').lstrip('/')
+            if prefix and not p.startswith(prefix):
+                continue
+            if prefix_full:
+                if not p.startswith(prefix_full):
+                    continue
+                rel = p[len(prefix_full):]
+            else:
+                rel = p
+            if not rel or '/' in rel:
+                continue
+            is_dir = e.get('type') == 'd'
+            items.append({
+                'name': rel,
+                'is_directory': is_dir,
+                'size': e.get('size') if not is_dir else None,
+                'mtime': e.get('mtime'),
+            })
+        items.sort(key=lambda i: (not i['is_directory'], i['name'].lower()))
+        return items
+
+    def _archive_dir_items(self, repo_path, archive, key, display_path,
+                           repo_name):
+        """Return the children items of display_path (cached), or None if the
+        archive/path cannot be listed."""
+        cache_key = (repo_path, archive)
+        now = time.time()
+        entry = _ARCHIVE_BROWSE_CACHE.get(cache_key)
+        if entry is None or now - entry['ts'] > _ARCHIVE_BROWSE_TTL:
+            entries = self._borg_list(repo_path, archive, key)
+            if entries is None:
+                return None
+            entry = {'base': self._archive_base(entries), 'ts': now, 'dirs': {}}
+            _ARCHIVE_BROWSE_CACHE[cache_key] = entry
+        base = entry['base']
+        if base is None:
+            return []
+
+        if display_path in entry['dirs']:
+            entry['ts'] = now
+            return entry['dirs'][display_path]
+
+        # Limit a per-directory borg query to that subtree. Borg stores paths
+        # relative (no leading slash), so build the real path from the base.
+        seg = display_path.strip('/').replace('\\', '/')
+        real = '/'.join(part for part in [base.strip('/'), seg] if part)
+        entries = self._borg_list(repo_path, archive, key, real or None)
+        if entries is None:
+            return None
+        items = self._archive_children(entries, base, display_path)
+
+        # Cache with a simple cap (evict oldest entry by ts).
+        if len(entry['dirs']) >= _ARCHIVE_BROWSE_MAX_DIRS:
+            oldest = min(entry['dirs'], key=lambda k: (_ARCHIVE_BROWSE_CACHE.get(cache_key) or {}).get('ts', now))
+            entry['dirs'].pop(oldest, None)
+        entry['dirs'][display_path] = items
+        return items
+
+    def _handle_browse_archive(self, repo_id, archive, data):
+        """Return the immediate children of a path inside an archive."""
+        try:
+            repo_path, repo_name = self._find_repository(repo_id)
+            if not repo_path or not repo_name:
+                self._send_error(404, "Repository not found")
+                return
+
+            if (
+                not archive
+                or archive in ('.', '..')
+                or re.fullmatch(r'[A-Za-z0-9_.-]+', archive) is None
+            ):
+                self._send_error(400, "Invalid archive name")
+                return
+
+            key = self._resolve_key(repo_path, data.get('encryption_key'))
+            if not key:
+                self._send_error(400, "Encryption key required")
+                return
+
+            path = (data.get('path') or '/')
+            if not path.startswith('/') or '..' in path.split('/'):
+                self._send_error(400, "Invalid path")
+                return
+
+            items = self._archive_dir_items(
+                repo_path, archive, key, path, repo_name
+            )
+            if items is None:
+                self._send_error(404, "Path not found in archive")
+                return
+            self._send_json_response({'path': path, 'items': items})
+        except Exception as e:
+            logger.error(f"Error browsing archive: {e}")
+            self._send_error(500, "Failed to browse archive")
+
     def _handle_unlock_repository(self, repo_id, data):
         """Unlock repository and list archives."""
         try:
             encryption_key = data.get('encryption_key')
-            
-            # Find repository by ID under borgspace
-            repo_path = None
-            repo_name = None
-            borgspace_path = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
-            
-            if os.path.isdir(borgspace_path):
-                for item in os.listdir(borgspace_path):
-                    if hash(item) % 10000 == int(repo_id):
-                        repo_path = os.path.join(borgspace_path, item)
-                        repo_name = item
-                        break
-            
+
+            repo_path, repo_name = self._find_repository(repo_id)
             if not repo_path or not repo_name:
                 self._send_error(404, "Repository not found")
                 return
-            
-            # If no key was supplied, use the stored (encrypted) passphrase so
-            # repositories created via the UI auto-unlock.
-            if not encryption_key:
-                try:
-                    conn = sqlite3.connect(self.db_path)
-                    cur = conn.cursor()
-                    row = cur.execute(
-                        "SELECT encrypted_passphrase FROM repositories WHERE path = ?",
-                        (repo_path,),
-                    ).fetchone()
-                    conn.close()
-                    if row and row[0]:
-                        encryption_key = decrypt_data(row[0])
-                except Exception as e:
-                    logger.error(f"Failed to auto-unlock repository {repo_name}: {e}")
+
+            encryption_key = self._resolve_key(repo_path, encryption_key)
             
             if not encryption_key:
                 self._send_error(400, "Encryption key required")

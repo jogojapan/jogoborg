@@ -147,3 +147,11 @@ export interface MemorySystemResponse {
   limit_mb: number | null;
   current_mb: number | null;
 }
+
+// An entry in an archive's file tree.
+export interface ArchiveItem {
+  name: string;
+  is_directory: boolean;
+  size: number | null;
+  mtime: string | null;
+}

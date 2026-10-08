@@ -7,6 +7,7 @@
   import Icon from '../components/Icon.svelte';
   import Modal from '../components/Modal.svelte';
   import NewRepositoryDialog from '../components/NewRepositoryDialog.svelte';
+  import ArchiveBrowser from '../components/ArchiveBrowser.svelte';
 
   let repositories = $state<Repository[]>([]);
   let loading = $state(true);
@@ -19,6 +20,12 @@
   let unlocked = $state(false);
   let showNew = $state(false);
   let showKeyField = $state(false);
+  let browse = $state<{
+    repoId: number;
+    repoName: string;
+    archive: string;
+    encryptionKey?: string;
+  } | null>(null);
 
   async function load() {
     loading = true;
@@ -69,6 +76,17 @@
     dialog = null;
   }
 
+  function openArchive(a: Archive) {
+    if (!dialog) return;
+    browse = {
+      repoId: dialog.id,
+      repoName: dialog.name,
+      archive: a.name,
+      encryptionKey: unlockKey || undefined,
+    };
+    dialog = null; // close the unlock/archives modal, show the explorer
+  }
+
   import { onMount } from 'svelte';
   onMount(() => { load(); });
 </script>
@@ -82,23 +100,33 @@
   </button>
 </div>
 
-{#if loading}
-  <div class="spinner"></div>
-{:else if repositories.length === 0}
-  <div class="empty-state">No repositories found in /borgspace</div>
+{#if browse}
+  <ArchiveBrowser
+    repoId={browse.repoId}
+    repoName={browse.repoName}
+    archive={browse.archive}
+    encryptionKey={browse.encryptionKey}
+    onBack={() => (browse = null)}
+  />
 {:else}
-  <div class="grid cols-3">
-    {#each repositories as repo}
-      <button class="card repo" onclick={() => openRepo(repo)}>
-        <div class="repo-head">
-          <span class="icon"><Icon icon="repos" size={32} /></span>
-          <span class="name">{repo.name}</span>
-        </div>
-        <div class="small muted">Path: {repo.path}</div>
-        <div class="small muted">Archives: {repo.archives_count}</div>
-      </button>
-    {/each}
-  </div>
+  {#if loading}
+    <div class="spinner"></div>
+  {:else if repositories.length === 0}
+    <div class="empty-state">No repositories found in /borgspace</div>
+  {:else}
+    <div class="grid cols-3">
+      {#each repositories as repo}
+        <button class="card repo" onclick={() => openRepo(repo)}>
+          <div class="repo-head">
+            <span class="icon"><Icon icon="repos" size={32} /></span>
+            <span class="name">{repo.name}</span>
+          </div>
+          <div class="small muted">Path: {repo.path}</div>
+          <div class="small muted">Archives: {repo.archives_count}</div>
+        </button>
+      {/each}
+    </div>
+  {/if}
 {/if}
 
 {#if showNew}
@@ -144,9 +172,16 @@
       {#if archives.length === 0}
         <div class="empty-state">No archives found</div>
       {:else}
+        <div class="small muted" style="margin-bottom:6px">
+          Click an archive to browse its contents.
+        </div>
         <ul class="archives">
           {#each archives as a}
-            <li class="card">
+            <li
+              class="card archive"
+              role="button"
+              onclick={() => openArchive(a)}
+            >
               <div class="a-name"><Icon icon="archive" /> {a.name}</div>
               <div class="small muted">Created: {formatDate(a.created_at)}</div>
               {#if a.size != null}
@@ -210,5 +245,11 @@
     align-items: center;
     gap: 8px;
     font-weight: 600;
+  }
+  .archives .archive {
+    cursor: pointer;
+  }
+  .archives .archive:hover {
+    background: var(--surface-2);
   }
 </style>
