@@ -51,33 +51,36 @@ def host_total_bytes():
     return None
 
 
-def _effectively_unlimited(limit):
-    """True when a limit is 'max'/None or larger than the host's RAM.
-
-    Docker containers without an explicit --memory limit report the cgroup
-    ceiling as the host's total memory (e.g. 8 TiB), which is not a useful
-    cap. We treat >= host RAM (or an absurd sentinel when /proc/meminfo is
-    unavailable) as unlimited.
-    """
-    if limit is None:
-        return True
-    reference = host_total_bytes()
-    if reference is None:
-        reference = 1 << 44  # 16 TiB sentinel
-    return limit >= reference
-
-
 def memory_limit_bytes():
-    """Container memory limit in bytes, or None if unavailable/unlimited."""
+    """Container memory limit in bytes, or None if not in a container.
+
+    An unlimited container (cgroup 'max', 0, or a value at/above the host's
+    RAM) shares the host's memory, so the host's physical RAM is the effective
+    cap and is reported as the limit. Outside a container there is no cgroup
+    limit and this returns None.
+    """
+    limit_file = None
     for paths in (CGROUP_V2, CGROUP_V1):
         if os.path.exists(paths['limit']):
-            value = _read_bytes(paths['limit'])
-            # A limit of 0 in v1 means "no limit"; anything >= host RAM is
-            # effectively unlimited for our purposes.
-            if value and not _effectively_unlimited(value):
-                return value
-            return None
-    return None
+            limit_file = paths['limit']
+            break
+    if limit_file is None:
+        return None  # not running under a container cgroup
+
+    value = _read_bytes(limit_file)  # None for 'max' / missing / 0
+    host = host_total_bytes()
+
+    # A genuine per-container limit is below the host's RAM; use it directly.
+    if value:
+        reference = host if host else (1 << 44)
+        if value < reference:
+            return value
+
+    # Unlimited (or at least as large as the host): the shared host RAM is the
+    # effective cap (e.g. a --memory-less Docker container reports the host
+    # total in cgroup memory.max; /proc/meminfo MemTotal is that same host RAM
+    # inside the container).
+    return host
 
 
 def memory_current_bytes():
