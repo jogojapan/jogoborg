@@ -12,6 +12,10 @@ YELLOW := \033[0;33m
 RED := \033[0;31m
 NC := \033[0m # No Color
 
+# Docker image name:tag for `make docker-build` (override on the command line,
+# e.g. `make docker-build IMAGE=jogojapan/jogoborg:0.8.0`).
+IMAGE ?= jogoborg:latest
+
 help: ## Show this help message
 	@echo "$(GREEN)Jogoborg Local Testing - Make Commands$(NC)"
 	@echo ""
@@ -180,13 +184,13 @@ quick-reset-all: stop reset setup start ## Complete reset and restart
 # Docker Integration
 # ============================================================================
 
-docker-build: ## Build Docker image (with git version baked in)
-	@echo "$(GREEN)Building Docker image...$(NC)"
+docker-build: ## Build Docker image (IMAGE overridable; with git version baked in)
+	@echo "$(GREEN)Building Docker image $(IMAGE)...$(NC)"
 	@cd .. && docker build \
 		--build-arg GIT_TAG="$$(git describe --tags --abbrev=0 2>/dev/null || echo dev)" \
 		--build-arg GIT_COMMIT="$$(git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)" \
 		--build-arg BUILD_DATE="$$(date -Is)" \
-		-t jogoborg:latest .
+		-t "$(IMAGE)" .
 
 docker-run: ## Run Docker container
 	@echo "$(GREEN)Running Docker container...$(NC)"
