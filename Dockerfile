@@ -1,6 +1,14 @@
 # Build stage - compile the Svelte web frontend
 FROM node:22-alpine AS frontend
 
+# Version metadata for the sidebar badge. .git is not in the image, so these
+# are passed at build time from the host checkout; defaults are empty and
+# version.mjs falls back to 'dev'/'unknown'.
+ARG GIT_TAG=
+ARG GIT_COMMIT=
+ARG BUILD_DATE=
+ENV GIT_TAG=$GIT_TAG GIT_COMMIT=$GIT_COMMIT BUILD_DATE=$BUILD_DATE
+
 WORKDIR /app
 
 COPY webui/package.json webui/package-lock.json* ./

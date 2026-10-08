@@ -180,9 +180,13 @@ quick-reset-all: stop reset setup start ## Complete reset and restart
 # Docker Integration
 # ============================================================================
 
-docker-build: ## Build Docker image
+docker-build: ## Build Docker image (with git version baked in)
 	@echo "$(GREEN)Building Docker image...$(NC)"
-	@cd .. && docker build -t jogoborg:latest .
+	@cd .. && docker build \
+		--build-arg GIT_TAG="$$(git describe --tags --abbrev=0 2>/dev/null || echo dev)" \
+		--build-arg GIT_COMMIT="$$(git rev-parse --short=10 HEAD 2>/dev/null || echo unknown)" \
+		--build-arg BUILD_DATE="$$(date -Is)" \
+		-t jogoborg:latest .
 
 docker-run: ## Run Docker container
 	@echo "$(GREEN)Running Docker container...$(NC)"

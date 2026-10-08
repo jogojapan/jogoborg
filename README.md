@@ -89,8 +89,17 @@ docker run -d \
 ```bash
 git clone <repository-url> jogoborg
 cd jogoborg
-docker build -t jogoborg:latest .
+
+# Optionally inject the git version (shows in the sidebar instead of vdev/unknown):
+docker build \
+  --build-arg GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo dev) \
+  --build-arg GIT_COMMIT=$(git rev-parse --short=10 HEAD 2>/dev/null || echo unknown) \
+  --build-arg BUILD_DATE=$(date -Is) \
+  -t jogoborg:latest .
+docker build -t jogoborg:latest .   # or without args (falls back to vdev/unknown)
 ```
+
+Inside `local_test/`, `make docker-build` builds the image with the git version baked in automatically.
 
 ## Directories & Volumes
 

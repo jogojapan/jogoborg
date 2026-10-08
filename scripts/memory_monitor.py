@@ -38,14 +38,45 @@ def _read_bytes(path):
         return None
 
 
+def host_total_bytes():
+    """Total physical RAM on the host (bytes) from /proc/meminfo, or None."""
+    try:
+        with open('/proc/meminfo') as f:
+            for line in f:
+                if line.startswith('MemTotal:'):
+                    # Field is in kB.
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _effectively_unlimited(limit):
+    """True when a limit is 'max'/None or larger than the host's RAM.
+
+    Docker containers without an explicit --memory limit report the cgroup
+    ceiling as the host's total memory (e.g. 8 TiB), which is not a useful
+    cap. We treat >= host RAM (or an absurd sentinel when /proc/meminfo is
+    unavailable) as unlimited.
+    """
+    if limit is None:
+        return True
+    reference = host_total_bytes()
+    if reference is None:
+        reference = 1 << 44  # 16 TiB sentinel
+    return limit >= reference
+
+
 def memory_limit_bytes():
     """Container memory limit in bytes, or None if unavailable/unlimited."""
     for paths in (CGROUP_V2, CGROUP_V1):
         if os.path.exists(paths['limit']):
             value = _read_bytes(paths['limit'])
-            # A limit of 0 in v1 means "no limit".
-            if value:
+            # A limit of 0 in v1 means "no limit"; anything >= host RAM is
+            # effectively unlimited for our purposes.
+            if value and not _effectively_unlimited(value):
                 return value
+            return None
     return None
 
 
