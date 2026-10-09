@@ -48,7 +48,7 @@ logger.setLevel(logging.DEBUG)
 # the instance.
 _ARCHIVE_BROWSE_CACHE = {}
 _ARCHIVE_BROWSE_TTL = 1800
-_ARCHIVE_BROWSE_MAX_DIRS = 10000
+_ARCHIVE_BROWSE_MAX_ARCHIVES = 8
 
 handler = RotatingFileHandler(
     os.path.join(log_dir, 'web_server.log'),
@@ -163,6 +163,12 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 # ['', 'api', 'repositories', <id>, 'archives', <archive>, 'browse']
                 if len(parts) == 7:
                     self._handle_browse_archive(parts[3], parts[5], data)
+                else:
+                    self._send_error(404, "Not found")
+            elif path.startswith('/api/repositories/') and path.endswith('/close'):
+                parts = path.split('/')
+                if len(parts) == 7:
+                    self._handle_release_archive(parts[3], parts[5])
                 else:
                     self._send_error(404, "Not found")
             elif path == '/api/notifications/test/smtp':
@@ -537,35 +543,38 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         return base
 
     @staticmethod
-    def _archive_children(entries, base, display_path):
-        """First-level children of display_path from a borg listing."""
-        seg = display_path.strip('/').replace('\\', '/')
+    def _build_tree(entries, base):
+        """Build a display-path -> children map for the whole archive from a
+        single full listing. Keys are display paths with a leading '/'."""
         base_part = base.strip('/')
-        real = base_part + ('/' + seg if seg else '')
-        prefix = real.rstrip('/')
-        prefix_full = (prefix + '/') if prefix else ''
-        items = []
+        base_prefix = (base_part + '/') if base_part else ''
+        tree = {}
         for e in entries:
             p = e.get('path', '').replace('\\', '/').lstrip('/')
-            if prefix and not p.startswith(prefix):
+            if base_part and not p.startswith(base_prefix):
                 continue
-            if prefix_full:
-                if not p.startswith(prefix_full):
-                    continue
-                rel = p[len(prefix_full):]
-            else:
-                rel = p
-            if not rel or '/' in rel:
+            rel = p[len(base_prefix):] if base_prefix else p
+            if not rel:
                 continue
+            segs = rel.split('/')
+            parent = '/' + '/'.join(segs[:-1]) if len(segs) > 1 else '/'
             is_dir = e.get('type') == 'd'
-            items.append({
-                'name': rel,
+            tree.setdefault(parent, []).append({
+                'name': segs[-1],
                 'is_directory': is_dir,
                 'size': e.get('size') if not is_dir else None,
                 'mtime': e.get('mtime'),
             })
-        items.sort(key=lambda i: (not i['is_directory'], i['name'].lower()))
-        return items
+        for items in tree.values():
+            items.sort(key=lambda i: (not i['is_directory'], i['name'].lower()))
+        return tree
+
+    def _evict_if_needed(self):
+        """Drop the oldest cached archive once the cache is over capacity."""
+        if len(_ARCHIVE_BROWSE_CACHE) <= _ARCHIVE_BROWSE_MAX_ARCHIVES:
+            return
+        oldest = min(_ARCHIVE_BROWSE_CACHE, key=lambda k: _ARCHIVE_BROWSE_CACHE[k]['ts'])
+        del _ARCHIVE_BROWSE_CACHE[oldest]
 
     def _archive_dir_items(self, repo_path, archive, key, display_path,
                            repo_name):
@@ -578,31 +587,31 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             entries = self._borg_list(repo_path, archive, key)
             if entries is None:
                 return None
-            entry = {'base': self._archive_base(entries), 'ts': now, 'dirs': {}}
+            base = self._archive_base(entries)
+            entry = {
+                'base': base,
+                'ts': now,
+                'tree': self._build_tree(entries, base),
+            }
             _ARCHIVE_BROWSE_CACHE[cache_key] = entry
-        base = entry['base']
-        if base is None:
-            return []
+            self._evict_if_needed()
 
-        if display_path in entry['dirs']:
-            entry['ts'] = now
-            return entry['dirs'][display_path]
-
-        # Limit a per-directory borg query to that subtree. Borg stores paths
-        # relative (no leading slash), so build the real path from the base.
-        seg = display_path.strip('/').replace('\\', '/')
-        real = '/'.join(part for part in [base.strip('/'), seg] if part)
-        entries = self._borg_list(repo_path, archive, key, real or None)
-        if entries is None:
+        tree = entry['tree']
+        if display_path not in tree:
             return None
-        items = self._archive_children(entries, base, display_path)
+        entry['ts'] = now  # refresh so active archives aren't evicted
+        return tree[display_path]
 
-        # Cache with a simple cap (evict oldest entry by ts).
-        if len(entry['dirs']) >= _ARCHIVE_BROWSE_MAX_DIRS:
-            oldest = min(entry['dirs'], key=lambda k: (_ARCHIVE_BROWSE_CACHE.get(cache_key) or {}).get('ts', now))
-            entry['dirs'].pop(oldest, None)
-        entry['dirs'][display_path] = items
-        return items
+    def _handle_release_archive(self, repo_id, archive):
+        """Drop the cached listing for this archive, freeing server memory."""
+        try:
+            repo_path, _ = self._find_repository(repo_id)
+            if repo_path:
+                _ARCHIVE_BROWSE_CACHE.pop((repo_path, archive), None)
+            self._send_json_response({'message': 'ok'})
+        except Exception as e:
+            logger.error(f"Error releasing archive cache: {e}")
+            self._send_error(500, "Failed to release archive")
 
     def _handle_browse_archive(self, repo_id, archive, data):
         """Return the immediate children of a path inside an archive."""

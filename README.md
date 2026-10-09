@@ -288,6 +288,12 @@ Inside Docker the scheduler reads the container memory limit from cgroup and can
 
 Memory limits are only known inside a container; the memory gate is disabled when none is available (e.g. local dev), where jobs simply run in parallel.
 
+## Borg Archive Browsing
+
+The Repositories screen lets you open an archive and browse its file tree (folders and files with human-readable sizes and dates). On the first open of an archive the server runs a single `borg list` over the whole archive and caches the parsed directory tree **in the web server's memory (server-side) — not in the browser**. The client only holds the currently shown directory's items. Subsequent navigation (into folders, up, back to the archive list) is served from that cached tree instantly, with no further borg reads.
+
+The cache is keyed by repository + archive, expires after ~30 minutes, is capped (the oldest entry is evicted when over capacity), and is **freed immediately when you leave a repository** back to the Repositories screen (an explicit release request). Opening an archive again re-scans it once. Borg 1.x has no per-directory listing index, so this single full scan is the unavoidable cost.
+
 ## Troubleshooting
 
 ### Deployment

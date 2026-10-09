@@ -102,6 +102,18 @@
     // to the archive list restores it without re-unlocking.
   }
 
+  // Free the server-side cached archive listing when leaving a repository.
+  function releaseArchive() {
+    if (!browse) return;
+    api
+      .post(
+        `/repositories/${browse.repoId}/archives/${encodeURIComponent(browse.archive)}/close`,
+        {},
+        auth.token
+      )
+      .catch(() => {});
+  }
+
   import { onMount } from 'svelte';
   onMount(() => { load(); });
 </script>
@@ -123,6 +135,7 @@
     encryptionKey={browse.encryptionKey}
     onBackToArchives={() => (browse = null)}
     onBack={() => {
+      releaseArchive();
       browse = null;
       dialog = null;
     }}
