@@ -10,10 +10,20 @@
 .env
 .env.local
 .env.example
+venv/
+local_test/
+test_jogoborg_config/
+test_jogoborg_logs/
+example_source/
 
 # Logs
 *.log
 logs/
+
+# Python
+__pycache__/
+*.pyc
+*.db
 
 # OS files
 .DS_Store

@@ -25,10 +25,6 @@ RUN apt-get clean && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     curl \
-    git \
-    unzip \
-    xz-utils \
-    zip \
     python3 \
     borgbackup \
     gnupg \
@@ -38,9 +34,7 @@ RUN apt-get clean && \
     python3-pip \
     psmisc \
     procps \
-    cron \
     ca-certificates \
-    sudo \
     apt-transport-https \
     lsb-release \
     time \
@@ -69,15 +63,16 @@ WORKDIR /app
 # JOGOBORG_WEB_DIR used by web_server.py.
 COPY --from=frontend /app/dist /app/build/web
 
-# Copy application source code
-COPY . .
+# Copy only the backend source + requirements (not dev/test data, venvs).
+COPY scripts/ /app/scripts/
+COPY requirements.txt /app/
 
-# Install Python dependencies for backend services
-RUN pip3 install --break-system-packages \
-    awscli \
+# Install Python dependencies (no wheel cache left in the image).
+RUN pip3 install --no-cache-dir --break-system-packages \
     cryptography \
     requests \
-    croniter
+    croniter \
+    boto3
 
 # Create required directories
 RUN mkdir -p /sourcespace /borgspace /config /log
