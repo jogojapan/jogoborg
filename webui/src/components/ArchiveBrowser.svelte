@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import * as api from '../lib/api';
   import { auth } from '../lib/auth.svelte';
   import { toastError, errMsg } from '../lib/toast.svelte';
@@ -27,10 +27,35 @@
   let items = $state<ArchiveItem[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let progress = $state<{
+    running?: boolean;
+    done?: number;
+    total?: number | null;
+    percent?: number | null;
+  } | null>(null);
+  let progressTimer: number | undefined;
 
   async function load() {
     loading = true;
     error = null;
+    progress = null;
+    clearInterval(progressTimer);
+    progressTimer = setInterval(async () => {
+      try {
+        progress = await api.get<{
+          running?: boolean;
+          done?: number;
+          total?: number | null;
+          percent?: number | null;
+        }>(
+          `/repositories/${repoId}/archives/${encodeURIComponent(archive)}/progress`,
+          auth.token
+        );
+      } catch {
+        /* transient — the scan may have just ended */
+      }
+    }, 400);
+
     try {
       const res = await api.post<{ items: ArchiveItem[] }>(
         `/repositories/${repoId}/archives/${encodeURIComponent(archive)}/browse`,
@@ -43,9 +68,16 @@
       error = msg;
       toastError('Failed to browse archive: ' + msg);
     } finally {
+      clearInterval(progressTimer);
+      progressTimer = undefined;
       loading = false;
     }
   }
+
+  onDestroy(() => {
+    clearInterval(progressTimer);
+    progressTimer = undefined;
+  });
 
   onMount(() => {
     load();
@@ -80,7 +112,25 @@
 </div>
 
 {#if loading}
-  <div class="spinner" aria-label="Loading" role="status"></div>
+  {#if progress && progress.percent != null}
+    <div class="scan">
+      <div
+        class="scan-bar"
+        role="progressbar"
+        aria-valuenow={Math.min(100, progress.percent)}
+        aria-valuemin="0"
+        aria-valuemax="100"
+      >
+        <div class="scan-fill" style="width:{Math.min(100, progress.percent)}%"></div>
+      </div>
+      <div class="small muted">
+        Scanning archive… {Math.min(100, progress.percent)}%
+        {#if progress && progress.done != null}({progress.done} items scanned){/if}
+      </div>
+    </div>
+  {:else}
+    <div class="spinner" aria-label="Loading" role="status"></div>
+  {/if}
 {:else if error}
   <div class="empty-state">
     <b>Couldn’t load archive</b>
@@ -194,5 +244,26 @@
   .date {
     text-align: right;
     white-space: nowrap;
+  }
+
+  .scan {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    max-width: 640px;
+  }
+  .scan-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .scan-fill {
+    height: 100%;
+    background: var(--primary);
+    transition: width 0.2s;
   }
 </style>

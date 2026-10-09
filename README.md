@@ -294,6 +294,8 @@ The Repositories screen lets you open an archive and browse its file tree (folde
 
 The cache is keyed by repository + archive, expires after ~30 minutes, is capped (the oldest entry is evicted when over capacity), and is **freed immediately when you leave a repository** back to the Repositories screen (an explicit release request). Opening an archive again re-scans it once. Borg 1.x has no per-directory listing index, so this single full scan is the unavoidable cost.
 
+While an archive is first being scanned, the explorer shows a **live progress bar** (percentage and items scanned). The scan streams borg's output and reports progress to a `/progress` endpoint; the web server runs threaded so this polling doesn't block browsing or other API calls.
+
 ## Troubleshooting
 
 ### Deployment

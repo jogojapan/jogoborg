@@ -6,7 +6,7 @@ import sqlite3
 import logging
 import stat
 from datetime import datetime, timezone, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import re
 import time
@@ -49,6 +49,10 @@ logger.setLevel(logging.DEBUG)
 _ARCHIVE_BROWSE_CACHE = {}
 _ARCHIVE_BROWSE_TTL = 1800
 _ARCHIVE_BROWSE_MAX_ARCHIVES = 8
+
+# Live progress of in-progress archive scans: (repo_path, archive) ->
+# {'total': nfiles|None, 'done': int, 'running': bool}. Cleared when done.
+_ARCHIVE_SCAN_PROGRESS = {}
 
 handler = RotatingFileHandler(
     os.path.join(log_dir, 'web_server.log'),
@@ -104,6 +108,12 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._handle_get_job_logs_timeline(parsed_path.query)
             elif path == '/api/system/memory':
                 self._handle_get_system_memory()
+            elif path.startswith('/api/repositories/') and path.endswith('/progress'):
+                parts = path.split('/')
+                if len(parts) == 7:
+                    self._handle_get_archive_progress(parts[3], parts[5])
+                else:
+                    self._send_error(404, "Not found")
             elif path.startswith('/'):
                 self._serve_static_file(path)
             else:
@@ -496,31 +506,69 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
     # --- archive browsing -------------------------------------------------
 
-    def _borg_list(self, repo_path, archive, key, subpath=None):
-        """Run `borg list --json-lines` and return the parsed entries, or
-        None on failure."""
-        cmd = ['borg', 'list', '--json-lines', f'{repo_path}::{archive}']
-        if subpath:
-            cmd.append(subpath)
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            env=dict(os.environ, BORG_PASSPHRASE=key),
-            timeout=300,
-        )
-        if result.returncode != 0:
+    def _archive_total_items(self, repo_path, archive, key):
+        """Estimated total item count for progress reporting (borg info
+        reports nfiles), or None if unavailable."""
+        try:
+            result = subprocess.run(
+                ['borg', 'info', '--json', f'{repo_path}::{archive}'],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ, BORG_PASSPHRASE=key),
+                timeout=120,
+            )
+            if result.returncode != 0:
+                return None
+            info = json.loads(result.stdout)
+            arch = (info.get('archives') or [{}])[0]
+            return arch.get('stats', {}).get('nfiles')
+        except Exception:
             return None
+
+    def _build_archive_tree(self, repo_path, archive, key):
+        """Stream the whole archive once, building the display tree while
+        publishing scan progress. Returns (base, tree) or (None, None)."""
+        progress_key = (repo_path, archive)
+        total = self._archive_total_items(repo_path, archive, key)
+        _ARCHIVE_SCAN_PROGRESS[progress_key] = {
+            'total': total, 'done': 0, 'running': True,
+        }
+
+        done = 0
         entries = []
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entries.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        return entries
+        rc = -1
+        try:
+            proc = subprocess.Popen(
+                ['borg', 'list', '--json-lines', f'{repo_path}::{archive}'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=dict(os.environ, BORG_PASSPHRASE=key),
+            )
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+                done += 1
+                if done % 500 == 0:
+                    st = _ARCHIVE_SCAN_PROGRESS.get(progress_key)
+                    if st:
+                        st['done'] = done
+            proc.stdout.close()
+            rc = proc.wait()
+            proc.stderr.close()
+        finally:
+            _ARCHIVE_SCAN_PROGRESS.pop(progress_key, None)
+
+        if rc != 0:
+            return None, None
+
+        base = self._archive_base(entries)
+        return base, self._build_tree(entries, base)
 
     @staticmethod
     def _archive_base(entries):
@@ -584,15 +632,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         now = time.time()
         entry = _ARCHIVE_BROWSE_CACHE.get(cache_key)
         if entry is None or now - entry['ts'] > _ARCHIVE_BROWSE_TTL:
-            entries = self._borg_list(repo_path, archive, key)
-            if entries is None:
+            base, tree = self._build_archive_tree(repo_path, archive, key)
+            if base is None:
                 return None
-            base = self._archive_base(entries)
-            entry = {
-                'base': base,
-                'ts': now,
-                'tree': self._build_tree(entries, base),
-            }
+            entry = {'base': base, 'ts': now, 'tree': tree}
             _ARCHIVE_BROWSE_CACHE[cache_key] = entry
             self._evict_if_needed()
 
@@ -601,6 +644,32 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             return None
         entry['ts'] = now  # refresh so active archives aren't evicted
         return tree[display_path]
+
+    def _handle_get_archive_progress(self, repo_id, archive):
+        """Live scan progress for an archive being opened."""
+        try:
+            repo_path, _ = self._find_repository(repo_id)
+            if not repo_path:
+                self._send_json_response(
+                    {'running': False, 'done': 0, 'total': None, 'percent': None})
+                return
+            st = _ARCHIVE_SCAN_PROGRESS.get((repo_path, archive))
+            if not st or not st.get('running'):
+                self._send_json_response(
+                    {'running': False, 'done': 0, 'total': None, 'percent': None})
+                return
+            done = st.get('done', 0)
+            total = st.get('total')
+            percent = round(100.0 * done / total) if total else None
+            self._send_json_response({
+                'running': True,
+                'done': done,
+                'total': total,
+                'percent': percent,
+            })
+        except Exception as e:
+            logger.error(f"Error getting archive progress: {e}")
+            self._send_error(500, "Failed to get archive progress")
 
     def _handle_release_archive(self, repo_id, archive):
         """Drop the cached listing for this archive, freeing server memory."""
@@ -1500,7 +1569,7 @@ def run_server():
     except Exception as e:
         logger.error(f"Database init/migration failed at startup: {e}")
 
-    server = HTTPServer(('0.0.0.0', port), JogoborgHTTPHandler)
+    server = ThreadingHTTPServer(('0.0.0.0', port), JogoborgHTTPHandler)
     logger.info(f"Starting Jogoborg web server on port {port}")
     
     try:
