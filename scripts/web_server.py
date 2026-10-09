@@ -203,7 +203,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(400, "Invalid JSON")
                 return
             
-            if path.startswith('/api/jobs/'):
+            if path.startswith('/api/repositories/') and path.endswith('/passphrase'):
+                repo_id = path.split('/')[-2]
+                self._handle_set_repository_passphrase(repo_id, data)
+            elif path.startswith('/api/jobs/'):
                 job_id = path.split('/')[-1]
                 self._handle_update_job(job_id, data)
             elif path == '/api/notifications':
@@ -371,6 +374,47 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             return len([line for line in result.stdout.strip().split('\n') if line.strip()])
         except Exception:
             return None
+
+    def _handle_set_repository_passphrase(self, repo_id, data):
+        """Store/update the encrypted passphrase for an existing repository,
+        after verifying it actually opens the repository."""
+        try:
+            repo_path, repo_name = self._find_repository(repo_id)
+            if not repo_path or not repo_name:
+                self._send_error(404, "Repository not found")
+                return
+
+            key = (data.get('encryption_key') or '').strip()
+            if not key:
+                self._send_error(400, "Encryption key required")
+                return
+
+            # The passphrase must actually unlock the repository.
+            if self._count_archives(repo_path, key) is None:
+                self._send_error(400, "Invalid passphrase for this repository")
+                return
+
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.execute('''
+                    INSERT INTO repositories (path, name, encrypted_passphrase)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(path) DO UPDATE SET
+                        name = excluded.name,
+                        encrypted_passphrase = excluded.encrypted_passphrase
+                ''', (repo_path, repo_name, encrypt_data(key)))
+                conn.commit()
+            finally:
+                conn.close()
+
+            self._send_json_response({
+                'message': 'Passphrase stored',
+                'name': repo_name,
+                'has_stored_key': True,
+            })
+        except Exception as e:
+            logger.error(f"Error storing repository passphrase: {e}")
+            self._send_error(500, "Failed to store passphrase")
 
     def _handle_create_repository(self, data):
         """Create a new Borg repository and remember its passphrase."""

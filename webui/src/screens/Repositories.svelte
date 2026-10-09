@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as api from '../lib/api';
   import { auth } from '../lib/auth.svelte';
-  import { toastError, errMsg } from '../lib/toast.svelte';
+  import { toastError, toastSuccess, errMsg } from '../lib/toast.svelte';
   import { formatBytes, formatDate } from '../lib/format';
   import type { Repository, Archive } from '../lib/types';
   import Icon from '../components/Icon.svelte';
@@ -20,6 +20,7 @@
   let unlocked = $state(false);
   let showNew = $state(false);
   let showKeyField = $state(false);
+  let remember = $state(true);
   let browse = $state<{
     repoId: number;
     repoName: string;
@@ -64,6 +65,19 @@
       );
       archives = res.archives ?? [];
       unlocked = true;
+      if (key && remember) {
+        try {
+          await api.put(
+            `/repositories/${dialog.id}/passphrase`,
+            { encryption_key: key },
+            auth.token
+          );
+          toastSuccess('Passphrase saved for this repository');
+          load(); // refresh has_stored_key on the card
+        } catch (e) {
+          toastError('Unlocked, but saving the passphrase failed: ' + errMsg(e));
+        }
+      }
     } catch (e) {
       if (!showKeyField) showKeyField = true; // fall back to manual entry
       toastError('Failed to unlock repository: ' + errMsg(e));
@@ -168,6 +182,10 @@
             onkeydown={(e) => { if (e.key === 'Enter') unlock(unlockKey); }}
           />
         </div>
+        <label class="remember">
+          <input type="checkbox" bind:checked={remember} />
+          Remember this passphrase (auto-unlock next time)
+        </label>
         <button class="btn" onclick={() => unlock(unlockKey)} disabled={unlocking}>
           <Icon icon="lock" /> {unlocking ? 'Unlocking…' : 'Unlock'}
         </button>
@@ -256,5 +274,14 @@
   }
   .archives .archive:hover {
     background: var(--surface-2);
+  }
+  .remember {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 8px 0;
+    cursor: pointer;
   }
 </style>
