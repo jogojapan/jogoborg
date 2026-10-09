@@ -335,13 +335,15 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                         # Check if it's a valid Borg repository
                         config_file = os.path.join(repo_path, 'config')
                         if os.path.exists(config_file):
+                            has_key = repo_path in stored
+                            key = self._stored_passphrase(repo_path) if has_key else None
                             repositories.append({
                                 'id': hash(item) % 10000,
                                 'name': item,
                                 'path': repo_path,
                                 'created_at': datetime.fromtimestamp(os.path.getctime(repo_path)).isoformat(),
-                                'archives_count': self._count_archives(repo_path),
-                                'has_stored_key': repo_path in stored,
+                                'archives_count': self._count_archives(repo_path, key),
+                                'has_stored_key': has_key,
                             })
             
             self._send_json_response({'repositories': repositories})
@@ -350,25 +352,25 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             logger.error(f"Error getting repositories: {e}")
             self._send_error(500, "Failed to get repositories")
 
-    def _count_archives(self, repo_path):
-        """Count archives in a repository."""
+    def _count_archives(self, repo_path, passphrase):
+        """Number of archives in a repository, or None if it can't be read
+        (e.g. no stored passphrase, so the encrypted repository can't be
+        listed)."""
+        if not passphrase:
+            return None
         try:
-            # Try to list archives using borg list
             result = subprocess.run(
                 ['borg', 'list', '--short', repo_path],
                 capture_output=True,
                 text=True,
-                env=dict(os.environ, BORG_PASSPHRASE='changeme'),
-                timeout=10
+                env=dict(os.environ, BORG_PASSPHRASE=passphrase),
+                timeout=60,
             )
-            
-            if result.returncode == 0:
-                return len([line for line in result.stdout.strip().split('\n') if line.strip()])
-            else:
-                return 0
-                
+            if result.returncode != 0:
+                return None
+            return len([line for line in result.stdout.strip().split('\n') if line.strip()])
         except Exception:
-            return 0
+            return None
 
     def _handle_create_repository(self, data):
         """Create a new Borg repository and remember its passphrase."""

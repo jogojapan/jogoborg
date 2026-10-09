@@ -10,7 +10,7 @@ export interface Repository {
   name: string;
   path: string;
   created_at?: string;
-  archives_count: number;
+  archives_count: number | null;
   has_stored_key?: boolean;
 }
 

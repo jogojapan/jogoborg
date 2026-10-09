@@ -122,7 +122,7 @@
             <span class="name">{repo.name}</span>
           </div>
           <div class="small muted">Path: {repo.path}</div>
-          <div class="small muted">Archives: {repo.archives_count}</div>
+          <div class="small muted">Archives: {repo.archives_count ?? 'unknown'}</div>
         </button>
       {/each}
     </div>
