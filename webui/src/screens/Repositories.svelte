@@ -84,7 +84,8 @@
       archive: a.name,
       encryptionKey: unlockKey || undefined,
     };
-    dialog = null; // close the unlock/archives modal, show the explorer
+    // Keep `dialog` set: the explorer replaces the modal view, and going back
+    // to the archive list restores it without re-unlocking.
   }
 
   import { onMount } from 'svelte';
@@ -106,7 +107,11 @@
     repoName={browse.repoName}
     archive={browse.archive}
     encryptionKey={browse.encryptionKey}
-    onBack={() => (browse = null)}
+    onBackToArchives={() => (browse = null)}
+    onBack={() => {
+      browse = null;
+      dialog = null;
+    }}
   />
 {:else}
   {#if loading}
@@ -139,7 +144,7 @@
   />
 {/if}
 
-{#if dialog}
+{#if dialog && !browse}
   <Modal title={'Repository: ' + dialog.name} onClose={closeDialog}>
     <p class="muted">Path: {dialog.path}</p>
 

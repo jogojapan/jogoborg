@@ -12,12 +12,14 @@
     repoName,
     archive,
     encryptionKey,
+    onBackToArchives,
     onBack,
   }: {
     repoId: number;
     repoName: string;
     archive: string;
     encryptionKey?: string;
+    onBackToArchives: () => void;
     onBack: () => void;
   } = $props();
 
@@ -62,6 +64,9 @@
 </script>
 
 <div class="toolbar">
+  <button class="btn ghost" onclick={onBackToArchives}>
+    <Icon icon="back" /> Archives
+  </button>
   <button class="btn ghost" onclick={onBack}>
     <Icon icon="back" /> Repositories
   </button>
