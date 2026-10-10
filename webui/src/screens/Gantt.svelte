@@ -141,10 +141,11 @@
       step={900000}
       value={vStartMs}
       class="panner"
-      style="width:{W}px"
+      style="width:100%"
       oninput={(e) => (vStartMs = Number((e.currentTarget as HTMLInputElement).value))}
     />
 
+    <div class="chart-scroll">
     <svg width={W} height={svgH} class="chart">
       {#each [0, 1, 2, 3] as i}
         <text
@@ -186,6 +187,7 @@
         {/each}
       {/each}
     </svg>
+    </div>
 
     {#if limitMb != null}
       <div class="legend small">
@@ -227,14 +229,18 @@
   }
   .panner {
     accent-color: var(--primary);
+    width: 100%;
   }
-  .chart {
+  .chart-scroll {
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
     max-width: 100%;
-    height: auto;
+    max-height: 70vh;
+    overflow: auto;
+  }
+  .chart {
+    display: block;
   }
   .legend {
     display: flex;

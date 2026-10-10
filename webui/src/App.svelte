@@ -19,7 +19,7 @@
     { path: '/sources', label: 'Source Directories', icon: 'folder' },
     { path: '/jobs', label: 'Backup Jobs', icon: 'jobs' },
     { path: '/notifications', label: 'Notifications', icon: 'notifications' },
-    { path: '/gantt', label: 'Scheduling', icon: 'activity' },
+    { path: '/gantt', label: 'Past Jobs', icon: 'activity' },
   ];
 
   const titles: Record<string, string> = {
@@ -28,7 +28,7 @@
     '/sources': 'Source Directories',
     '/jobs': 'Backup Jobs',
     '/notifications': 'Notification Settings',
-    '/gantt': 'Scheduling Overview',
+    '/gantt': 'Past Jobs',
   };
 
   // Auth guard: bounce unauthenticated users to login and authenticated users

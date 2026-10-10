@@ -275,7 +275,7 @@ quick_restart         # stop + start
 
 Backup jobs run **in parallel** (up to `JOGOBORG_MAX_PARALLEL_JOBS`, default 4). The scheduler checks every 30 seconds and starts each due job in its own thread, so a job scheduled while another is still running starts on time instead of waiting or being skipped.
 
-The **Scheduling** view (`/gantt`) shows the last 7 days of runs as a Gantt chart: zoom levels from 3h to 92h, a horizontal scrollbar to pan, and bars coloured by peak memory relative to the container limit. The backup-job dialogs include a mini version ("View scheduling activity") to pick a quiet window from past data when choosing a schedule.
+The **Past Jobs** view (`/gantt`) shows the last 7 days of runs as a Gantt chart: zoom levels from 3h to 92h, a horizontal scrollbar to pan, and bars coloured by peak memory relative to the container limit. The backup-job dialogs include a mini version ("View scheduling activity") to pick a quiet window from past data when choosing a schedule.
 
 Inside Docker the scheduler reads the container memory limit from cgroup and can **delay** a job when memory is near its limit, notifying through the configured channels (SMTP/Gotify) with the delay length and current usage:
 
