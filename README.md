@@ -300,7 +300,7 @@ While an archive is first being scanned, the explorer shows a **live progress ba
 
 - **Graceful stop**: `docker stop` now lets in-flight backups finish. The scheduler stops dispatching new jobs and drains running ones for up to `JOGOBORG_SHUTDOWN_GRACE` (default **300s**; compose sets `stop_grace_period: 330s`). If a job still can't finish in that time, its `borg` subprocess is sent `SIGINT` for a **clean abort** (no repository corruption), and you're **notified via the configured channels** (SMTP/Gotify) with the job name and the phase it was in (`pre_command`, `borg_create`, `borg_prune`, `borg_compact`, `db_dump`, `s3_sync`, `post_command`).
 - **Interrupted jobs**: a job left `running` by a stop is marked **`interrupted`** on the next start (and a notification is sent), so the UI shows no phantom running jobs.
-- **After an unclean kill** (e.g. `docker kill`, host crash): `borg create` is crash-safe (no partial archive is committed), but an interrupted `prune`/`compact` may need `borg check --repair`. S3 is re-synced on the next run (incremental), and DB dumps are written atomically (temp file then rename), so no partial dump is left behind.
+- **After an unclean kill** (e.g. `docker kill`, host crash): `borg create` is crash-safe (no partial archive is committed), but an interrupted `prune`/`compact` may need `borg check --repair`. S3 is re-synced on the next run (incremental), and DB dumps are written to a temp file that is renamed only on success, so no partial `.sql` is mistaken for a completed dump (stale temp files are removed by the regular cleanup).
 
 ## Troubleshooting
 

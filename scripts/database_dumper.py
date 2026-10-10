@@ -71,7 +71,7 @@ class DatabaseDumper:
                         '-t', table.strip(),
                         '--no-password',
                         '--verbose',
-                        '-f', dump_file
+                        '-f', dump_file + '.tmp'
                     ]
                     
                     logger.info(f"Dumping PostgreSQL table: {table}")
@@ -86,6 +86,7 @@ class DatabaseDumper:
                     if result.returncode != 0:
                         raise Exception(f"pg_dump failed for table {table}: {result.stderr}")
                     
+                    os.replace(dump_file + '.tmp', dump_file)
                     dump_files.append(dump_file)
                     logger.info(f"Successfully dumped table {table} to {dump_file}")
             
@@ -104,7 +105,7 @@ class DatabaseDumper:
                     '-d', database,
                     '--no-password',
                     '--verbose',
-                    '-f', dump_file
+                    '-f', dump_file + '.tmp'
                 ]
                 
                 logger.info(f"Dumping entire PostgreSQL database: {database}")
@@ -119,6 +120,7 @@ class DatabaseDumper:
                 if result.returncode != 0:
                     raise Exception(f"pg_dump failed: {result.stderr}")
                 
+                os.replace(dump_file + '.tmp', dump_file)
                 dump_files.append(dump_file)
                 logger.info(f"Successfully dumped database to {dump_file}")
             
@@ -189,7 +191,7 @@ password={password}
                     
                     logger.info(f"Dumping MariaDB table: {table}")
                     
-                    with open(dump_file, 'w') as f:
+                    with open(dump_file + '.tmp', 'w') as f:
                         result = subprocess.run(
                             cmd,
                             stdout=f,
@@ -201,6 +203,7 @@ password={password}
                     if result.returncode != 0:
                         raise Exception(f"mysqldump failed for table {table}: {result.stderr}")
                     
+                    os.replace(dump_file + '.tmp', dump_file)
                     dump_files.append(dump_file)
                     logger.info(f"Successfully dumped table {table} to {dump_file}")
             
@@ -223,7 +226,7 @@ password={password}
                 
                 logger.info(f"Dumping entire MariaDB database: {database}")
                 
-                with open(dump_file, 'w') as f:
+                with open(dump_file + '.tmp', 'w') as f:
                     result = subprocess.run(
                         cmd,
                         stdout=f,
@@ -235,6 +238,7 @@ password={password}
                 if result.returncode != 0:
                     raise Exception(f"mysqldump failed: {result.stderr}")
                 
+                os.replace(dump_file + '.tmp', dump_file)
                 dump_files.append(dump_file)
                 logger.info(f"Successfully dumped database to {dump_file}")
             
