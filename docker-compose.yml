@@ -51,7 +51,11 @@ services:
       # Optional: Timezone
       - TZ=UTC
     restart: unless-stopped
-    
+
+    # Allow in-flight backups to finish gracefully on `docker stop` (the
+    # scheduler drains up to JOGOBORG_SHUTDOWN_GRACE, default 300s).
+    stop_grace_period: 330s
+
     # Health check to monitor service availability
     healthcheck:
       test: ["CMD", "/usr/local/bin/health-check.sh"]

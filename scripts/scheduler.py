@@ -6,6 +6,7 @@ import sqlite3
 import json
 import logging
 import threading
+import signal
 from datetime import datetime, timedelta
 from croniter import croniter
 
@@ -36,6 +37,9 @@ class BackupScheduler:
         # Scheduler runtime state.
         self._active_job_ids = set()  # job ids currently running in threads
         self._delayed = {}            # job_id -> {job, reason, next_check, notified}
+        self._job_threads = set()     # running job threads
+        self._running_jobs = {}       # job_id -> job (for interruption handling)
+        self.shutdown_grace = int(os.environ.get('JOGOBORG_SHUTDOWN_GRACE', '300') or 300)
         
         # Set up logging
         os.makedirs(self.log_dir, exist_ok=True)
@@ -194,6 +198,7 @@ SELECT id, name, repository, schedule, compression, exclude_patterns,
         job_id = job['id']
         self._active_job_ids.add(job_id)
         self._delayed.pop(job_id, None)
+        self._running_jobs[job_id] = job
         self.logger.info(f"Starting backup job: {job['name']}")
 
         def run_job():
@@ -212,8 +217,11 @@ SELECT id, name, repository, schedule, compression, exclude_patterns,
                     self.logger.error(f"Failed to send notification: {notify_error}")
             finally:
                 self._active_job_ids.discard(job_id)
+                self._running_jobs.pop(job_id, None)
+                self._job_threads.discard(threading.current_thread())
 
         thread = threading.Thread(target=run_job, daemon=True)
+        self._job_threads.add(thread)
         thread.start()
 
     def _delay_for_memory(self, job, now, pct):
@@ -301,10 +309,92 @@ SELECT id, name, repository, schedule, compression, exclude_patterns,
                 # delay elapsed but still gated -> extend and re-notify
                 self._delay_for_memory(job, now, pct if pct is not None else 1.0)
 
+    def _recover_interrupted(self):
+        """Mark job_logs left 'running' by an unclean stop as 'interrupted' and
+        notify, so the UI shows no phantom running jobs."""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cur = conn.cursor()
+            rows = cur.execute(
+                "SELECT l.id, l.job_id, j.name FROM job_logs l "
+                "LEFT JOIN backup_jobs j ON l.job_id = j.id "
+                "WHERE l.status = 'running'"
+            ).fetchall()
+            for log_id, job_id, name in rows:
+                label = name or f"job-{job_id}"
+                cur.execute(
+                    "UPDATE job_logs SET status='interrupted', error_message=? WHERE id=?",
+                    ("Interrupted by service shutdown", log_id),
+                )
+                try:
+                    self.notification_service.send_notification(
+                        subject=f"Backup job interrupted: {label}",
+                        message=(f"Backup job '{label}' was interrupted by an unclean "
+                                 f"service shutdown (phase unknown). If needed, check the "
+                                 f"repository with `borg check --repair`."),
+                        is_error=True,
+                    )
+                except Exception as e:
+                    self.logger.error(f"Failed to send interruption notification: {e}")
+            conn.commit()
+            conn.close()
+            if rows:
+                self.logger.info(
+                    f"Marked {len(rows)} interrupted job log(s) from a previous shutdown"
+                )
+        except Exception as e:
+            self.logger.error(f"Failed to recover interrupted job logs: {e}")
+
+    def _handle_signal(self, signum, frame):
+        """Graceful shutdown: stop dispatching, drain in-flight jobs up to the
+        grace period, then SIGINT any still-running borg and notify."""
+        self.logger.info("Received termination signal; stopping new dispatches")
+        self.running = False
+        deadline = time.time() + self.shutdown_grace
+        while self._job_threads and time.time() < deadline:
+            self._job_threads = {t for t in self._job_threads if t.is_alive()}
+            if not self._job_threads:
+                break
+            time.sleep(0.2)
+        if self._job_threads:
+            self.logger.warning(
+                f"Shutdown grace elapsed with {len(self._job_threads)} job(s) "
+                f"still running; aborting"
+            )
+            self._abort_and_notify()
+            deadline2 = time.time() + 15
+            while self._job_threads and time.time() < deadline2:
+                self._job_threads = {t for t in self._job_threads if t.is_alive()}
+                time.sleep(0.2)
+        self.logger.info("Shutdown complete")
+
+    def _abort_and_notify(self):
+        """SIGINT in-flight borg subprocesses (clean abort) and notify which
+        jobs were interrupted and in which phase."""
+        for job_id, job in list(self._running_jobs.items()):
+            phase = self.executor.current_phase(job_id) or 'unknown'
+            pid = self.executor.current_pid(job_id)
+            self.logger.warning(f"Interrupting job '{job['name']}' (phase: {phase})")
+            if pid:
+                try:
+                    os.kill(pid, signal.SIGINT)
+                except Exception as e:
+                    self.logger.warning(f"Failed to SIGINT pid {pid}: {e}")
+            try:
+                self.notification_service.send_notification(
+                    subject=f"Backup job interrupted: {job['name']}",
+                    message=(f"Backup job '{job['name']}' was interrupted by a service "
+                             f"shutdown while it was in phase '{phase}'."),
+                    is_error=True,
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to send interruption notification: {e}")
+
     def run(self):
         """Main scheduler loop: dispatch due jobs in parallel, bounded by the
         concurrency cap and memory gate."""
         self.logger.info("Backup scheduler started")
+        self._recover_interrupted()
         self.logger.info(
             f"Max parallel jobs: {self.max_parallel}; memory delay threshold: "
             f"{self.mem_delay_threshold * 100:.0f}%, resume: "
@@ -347,7 +437,10 @@ def main():
         logging.error(f"Database init/migration failed at startup: {e}")
 
     scheduler = BackupScheduler()
-    
+
+    signal.signal(signal.SIGTERM, scheduler._handle_signal)
+    signal.signal(signal.SIGINT, scheduler._handle_signal)
+
     try:
         scheduler.run()
     except KeyboardInterrupt:

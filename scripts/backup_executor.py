@@ -45,6 +45,24 @@ class BackupExecutor:
         # Log environment configuration for debugging
         self._log_config()
 
+        # Runtime tracking for graceful shutdown: current phase and active
+        # subprocess pid per job, so an in-flight borg can be aborted cleanly
+        # (SIGINT) on service shutdown.
+        self._phases = {}
+        self._active_pids = {}
+
+    def _set_phase(self, job_id, phase):
+        self._phases[job_id] = phase
+
+    def current_phase(self, job_id):
+        return self._phases.get(job_id)
+
+    def _mark_pid(self, job_id, proc):
+        self._active_pids[job_id] = proc.pid
+
+    def current_pid(self, job_id):
+        return self._active_pids.get(job_id)
+
     def _get_env(self, key, default=None):
         """Get environment variable with override support for testing."""
         # Check overrides first (for local testing)
@@ -110,6 +128,7 @@ class BackupExecutor:
         
         # Initialize log entry
         log_entry_id = self._create_log_entry(job_id, started_at)
+        self._set_phase(job_id, 'starting')
         
         # Track if an exception occurs so we can still run post-command
         backup_exception = None
@@ -132,6 +151,7 @@ class BackupExecutor:
         s3_file_count = None
         
         try:
+            self._set_phase(job_id, 'pre_command')
             # Execute pre-command if specified
             if job.get('pre_command'):
                 job_logger.info(f"Executing pre-command: {job['pre_command']}")
@@ -147,21 +167,25 @@ class BackupExecutor:
                 self._init_repository(repo_path, job['repository_passphrase'], job_logger)
             
             # Execute main backup
+            self._set_phase(job_id, 'borg_create')
             create_duration, create_max_memory = self._execute_borg_create(
                 job, repo_path, started_at, job_logger
             )
             
             # Execute pruning
+            self._set_phase(job_id, 'borg_prune')
             prune_duration, prune_max_memory = self._execute_borg_prune(
                 job, repo_path, job_logger
             )
             
             # Execute compacting
+            self._set_phase(job_id, 'borg_compact')
             compact_duration, compact_max_memory = self._execute_borg_compact(
                 job, repo_path, job_logger
             )
             
             # Handle database dumps if configured
+            self._set_phase(job_id, 'db_dump')
             if job.get('db_config'):
                 (db_dump_duration, db_dump_max_memory, 
                  db_archive_duration, db_archive_max_memory,
@@ -175,6 +199,7 @@ class BackupExecutor:
         
         # ALWAYS execute post-command if specified (even if backup steps failed)
         # This ensures cleanup operations like maintenance mode are always performed
+        self._set_phase(job_id, 'post_command')
         post_command_exception = None
         if job.get('post_command'):
             try:
@@ -190,6 +215,7 @@ class BackupExecutor:
         
         try:
             # Sync to S3 if configured (only if backup steps succeeded)
+            self._set_phase(job_id, 's3_sync')
             if backup_exception is None and job.get('s3_config'):
                 s3_stats = self._execute_s3_sync(job, repo_path, job_logger)
                 if s3_stats:
@@ -202,7 +228,11 @@ class BackupExecutor:
         
         # Now handle the overall result
         finished_at = datetime.now(timezone.utc)
-        
+
+        self._set_phase(job_id, 'completed' if backup_exception is None else 'failed')
+        self._active_pids.pop(job_id, None)
+        self._phases.pop(job_id, None)
+
         if backup_exception is None:
             # Job succeeded
             self._update_log_entry(
@@ -507,6 +537,7 @@ class BackupExecutor:
             text=True,
             env=self._get_borg_env(job['repository_passphrase'])
         )
+        self._mark_pid(job['id'], process)
         
         # Wait for completion
         stdout, stderr = process.communicate()

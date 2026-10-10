@@ -36,9 +36,15 @@ fi
 # Start background services
 echo "Starting backup scheduler..."
 python3 /app/scripts/scheduler.py &
+SCHED_PID=$!
 
 echo "Starting web server..."
 python3 /app/scripts/web_server.py &
+WEB_PID=$!
+
+# Forward termination to the services so the scheduler can finish in-flight
+# backups gracefully before the container stops.
+trap 'kill -TERM "$SCHED_PID" "$WEB_PID" 2>/dev/null' TERM INT
 
 # Keep container running
 wait
