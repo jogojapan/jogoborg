@@ -56,8 +56,8 @@
 
   async function calcSize(item: SourceItem) {
     if (pendingSizes.has(item.path)) return;
-    const prior = sizes.get(item.path);
-    if (prior !== undefined && prior !== 'Error') return; // already computed
+    // Allow re-measuring: the button stays available even after a result, so
+    // the user can refresh the estimate after filesystem changes.
     // Reassign the reactive containers so the spinner shows immediately
     // (mutating a $state Set/Map in place is not reactive).
     pendingSizes = new Set(pendingSizes).add(item.path);
@@ -157,7 +157,7 @@
             {#if item.last_modified}Modified: {formatDate(item.last_modified)}{/if}
           </div>
         </div>
-        {#if item.is_directory && (sizes.get(item.path) === undefined || sizes.get(item.path) === 'Error')}
+        {#if item.is_directory}
           <button
             class="btn ghost size-btn"
             disabled={pendingSizes.has(item.path)}

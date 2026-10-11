@@ -1835,7 +1835,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             # Bound the walk so huge directories never hang the request
             # indefinitely. Once the estimate is robust enough we stop and
             # report it as approximate.
-            MAX_ESTIMATE_BYTES = 20 * 1024 * 1024 * 1024  # 20 GiB of walked file size
+            # The byte cap is only a safety net against absurd totals; it must be high
+            # enough that a single large (e.g. sparse/VM/database) file does NOT
+            # trip it instantly and label a small directory "too large". The
+            # time budget and file count are the real guards.
+            MAX_ESTIMATE_BYTES = 1024 * 1024 * 1024 * 1024  # 1 TiB
             MAX_WALKED_FILES = 200_000  # guard against many tiny files
             MAX_ESTIMATE_SECONDS = 20.0  # walk up to this long before treating the result as too large
 
