@@ -1837,7 +1837,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             # report it as approximate.
             MAX_ESTIMATE_BYTES = 20 * 1024 * 1024 * 1024  # 20 GiB of walked file size
             MAX_WALKED_FILES = 200_000  # guard against many tiny files
-            MAX_ESTIMATE_SECONDS = 5.0  # return an approximate estimate promptly
+            MAX_ESTIMATE_SECONDS = 20.0  # walk up to this long before treating the result as too large
 
             def get_size(start_path):
                 if os.path.isfile(start_path):

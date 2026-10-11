@@ -70,7 +70,7 @@
       );
       sizes = new Map(sizes).set(
         item.path,
-        (res.approximate ? '~' : '') + formatBytes(res.size)
+        res.approximate ? 'too large' : formatBytes(res.size)
       );
     } catch (e) {
       sizes = new Map(sizes).set(item.path, 'Error');
