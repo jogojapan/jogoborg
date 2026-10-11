@@ -565,9 +565,18 @@ class BackupExecutor:
         borg_cmd.extend(job['source_directories'])
         
         # Add exclude patterns
-        for pattern in job.get('exclude_patterns', []):
-            if pattern.strip():
-                borg_cmd.extend(['--exclude', pattern.strip()])
+        raw_patterns = job.get('exclude_patterns', [])
+        # A caller may hand us the newline-joined string (e.g. the manual-run
+        # path) instead of a list. Iterating a string would emit `--exclude /`
+        # per slash, and borg's empty-after-`/`-strip pattern excludes the whole
+        # archive. Normalise to a list and drop any all-slash/empty patterns.
+        if isinstance(raw_patterns, str):
+            raw_patterns = [p for p in raw_patterns.split('\n')]
+        for pattern in raw_patterns:
+            pat = pattern.strip() if isinstance(pattern, str) else None
+            if not pat or not pat.lstrip('/'):
+                continue
+            borg_cmd.extend(['--exclude', pat])
         
         # Wrap with time command for precise measurement
         cmd = ['/usr/bin/time', '-v'] + borg_cmd

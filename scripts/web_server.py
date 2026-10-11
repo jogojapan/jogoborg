@@ -1493,6 +1493,16 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     except json.JSONDecodeError:
                         # Fallback to comma-separated string parsing for backwards compatibility
                         job['source_directories'] = [d.strip() for d in job['source_directories'].split(',')]
+
+                # exclude_patterns is stored as a newline-joined string; the
+                # executor expects a list. Without this split its `for pattern
+                # in exclude_patterns` would iterate CHARACTERS, turning the '/'
+                # in a pattern into `--exclude /` — an empty borg pattern that
+                # excludes the ENTIRE archive.
+                if isinstance(job.get('exclude_patterns'), str):
+                    job['exclude_patterns'] = [
+                        p.strip() for p in job['exclude_patterns'].split('\n') if p.strip()
+                    ]
                 
             finally:
                 conn.close()
