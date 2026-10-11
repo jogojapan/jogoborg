@@ -1,5 +1,6 @@
 <script lang="ts">
   import { router } from './lib/router.svelte';
+  import { triggerSourcesReset } from './lib/sources-nav.svelte';
   import { auth, logout } from './lib/auth.svelte';
   import { theme, toggleTheme } from './lib/theme.svelte';
   import { buildInfo } from './lib/build-info';
@@ -55,6 +56,11 @@
             class="nav-item"
             class:active={router.path === item.path}
             href={'#' + item.path}
+            onclick={() => {
+              if (item.path === '/sources' && router.path === '/sources') {
+                triggerSourcesReset();
+              }
+            }}
           >
             <Icon icon={item.icon} />
             <span>{item.label}</span>

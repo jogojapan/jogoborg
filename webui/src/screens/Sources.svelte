@@ -3,13 +3,14 @@
   import { auth } from '../lib/auth.svelte';
   import { toastError, errMsg } from '../lib/toast.svelte';
   import { formatBytes, formatDate } from '../lib/format';
+  import { sourcesReset } from '../lib/sources-nav.svelte';
   import type { SourceItem } from '../lib/types';
   import Icon from '../components/Icon.svelte';
 
   let currentPath = $state('/sourcespace');
   let items = $state<SourceItem[]>([]);
   let loading = $state(true);
-  const pathHistory = $state<string[]>(['/sourcespace']);
+  let pathHistory = $state<string[]>(['/sourcespace']);
 
   // per-path size request state
   let sizes = $state(new Map<string, string>());
@@ -89,6 +90,24 @@
   }
 
   import { onMount } from 'svelte';
+  function resetToRoot() {
+    currentPath = '/sourcespace';
+    pathHistory = [];
+    pathHistory.push('/sourcespace');
+    load();
+  }
+
+  // When the nav re-triggers the (already-open) Source Directories screen,
+  // jump back to the root instead of keeping the current subdirectory.
+  let prevResetVersion = sourcesReset.version;
+  $effect(() => {
+    const v = sourcesReset.version;
+    if (v !== prevResetVersion) {
+      prevResetVersion = v;
+      resetToRoot();
+    }
+  });
+
   onMount(() => { load(); });
 </script>
 
