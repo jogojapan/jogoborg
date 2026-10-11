@@ -6,8 +6,9 @@ name: security
 #
 # Requires a Forgejo runner with a Docker-capable job environment. The job
 # image (e.g. label `ubuntu:docker://catthehacker/ubuntu:act-latest`) must
-# include bash + the Docker CLI + git + curl + tar; the runner exposes DOCKER_HOST
-# to a dind daemon. The scanners (osv-scanner, trivy, gitleaks) are installed
+# include bash + the Docker CLI + git + curl + tar + python3; the runner exposes
+# DOCKER_HOST to a dind daemon. The scanners (osv-scanner, trivy, gitleaks) are
+# installed
 # fresh in the runner; they are NOT part of the published image.
 on:
   push:
@@ -37,8 +38,10 @@ jobs:
           chmod +x osv-scanner
           curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
             | sh -s -- -b /opt/scan
-          curl -sSfL -o gitleaks.tar.gz \
-            https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz
+          # gitleaks' linux asset is VERSIONED (gitleaks_<ver>_linux_x64.tar.gz),
+          # so the latest/download URL 404s; resolve it via the release API.
+          curl -sSfL -o gitleaks.tar.gz "$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+            | python3 -c "import sys,json; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].endswith('linux_x64.tar.gz')][0])")"
           tar -xzf gitleaks.tar.gz -C /opt/scan
           echo "/opt/scan" >> "$GITHUB_PATH"
 
