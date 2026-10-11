@@ -47,11 +47,16 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends postgresql-client-18 && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Docker CLI
+# Install Docker CLI (used by job pre/post commands to run `docker …`).
+# The Docker CLI is a statically-linked Go binary; its bundled Go stdlib is
+# what image scanners flag. Pin to 29.9.0 because it is the first release built
+# with Go 1.26.9, which fixes two Go 1.26.8 stdlib CVEs (verified by inspecting
+# the embedded Go version in the .deb). Bump this pin when a newer build uses
+# Go >= 1.26.9; the CLI is not a source of our own Go code.
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
-    && apt-get install -y docker-ce-cli \
+    && apt-get install -y docker-ce-cli=5:29.9.0-1~ubuntu.24.04~noble \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
