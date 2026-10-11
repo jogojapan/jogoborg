@@ -65,7 +65,11 @@ jobs:
             --format json --output-file scan-reports/osv-sbom.json || true
 
       - name: Generate SBOM (Syft, SPDX)
-        run: syft scan scan-reports/image.tar -o spdx-json -f scan-reports/sbom.json
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          syft scan scan-reports/image.tar -o spdx-json > scan-reports/sbom.json || true
 
       - name: Aggregate security reports (Markdown summary)
         # Viewing aid only - never fails the run. Parses every JSON report into
@@ -79,6 +83,8 @@ jobs:
           SEV = {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"LOW":3,"UNKNOWN":4}
           rows = []
           def add(sev, tool, vid, pkg, ver, fixed, ref):
+              if isinstance(sev, list):
+                  sev = sev[0] if sev else "UNKNOWN"
               rows.append((sev.upper() if sev else "UNKNOWN", tool, vid or "", pkg or "", ver or "", fixed or "", ref or ""))
           def osv(fn, tool):
               d = json.load(open("scan-reports/"+fn))
