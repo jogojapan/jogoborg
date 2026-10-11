@@ -40,6 +40,8 @@ jobs:
           curl -sSfL -o gitleaks.tar.gz "$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
             | python3 -c "import sys,json; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].endswith('linux_x64.tar.gz')][0])")"
           tar -xzf gitleaks.tar.gz -C /opt/scan
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b /opt/scan
           echo "/opt/scan" >> "$GITHUB_PATH"
 
       - name: Build image
@@ -62,6 +64,25 @@ jobs:
           osv-scanner scan scan-reports/image.cdx.json \
             --format json --output-file scan-reports/osv-sbom.json || true
 
+      - name: Generate SBOM (Syft, SPDX)
+        run: syft scan scan-reports/image.tar -o spdx-json -f scan-reports/sbom.json
+
+      - name: Report commit status (best-effort)
+        # Posts a `security/scan` status so Forgejo branch protection can
+        # require it as a merge gate. To make this a REAL gate, grant the job
+        # token `repo:status` via Forgejo "Authorized Integrations" (or a
+        # trusted runner) and set branch protection to require `security/scan`.
+        # Until then this is a no-op (continue-on-error).
+        if: always()
+        continue-on-error: true
+        run: |
+          STATE=${{ success() && 'success' || 'failure' }}
+          curl -fsS -X POST "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
+            -H "Authorization: token ${{ github.token }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"state\":\"${STATE}\",\"context\":\"security/scan\",\"description\":\"osv/trivy/gitleaks/syft scan\"}" \
+            || echo "status not posted - grant repo:status to the runner to enable the merge gate"
+
       - name: Upload reports
         if: always()
         # actions/upload-artifact@v4's @actions/artifact v2 client hard-refuses
@@ -74,4 +95,6 @@ jobs:
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: security-reports
-          path: scan-reports/
+          # Reports only (not the ~400 MB docker-save tarball): the JSON
+          # reports + the CycloneDX/Syft SBOMs.
+          path: scan-reports/*.json
