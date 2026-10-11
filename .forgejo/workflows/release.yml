@@ -28,7 +28,7 @@ jobs:
       SCAN_IMAGE: jogoborg:publish
       REGISTRY_USER: ${{ vars.REGISTRY_USER }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           fetch-tags: true
