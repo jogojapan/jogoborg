@@ -22,7 +22,12 @@
   const isEditing = job !== null;
 
   let name = $state(job?.name ?? '');
-  let repository = $state<string | null>(job?.repository || job?.name || null);
+  // '' means "Auto-create new" (the repo dir is created/initialised with the
+// job name when the job runs, or immediately on create). Editing shows a job
+// whose saved repo == its name as auto-create too.
+let repository = $state<string>(
+  job?.repository === job?.name ? '' : (job?.repository ?? '')
+);
   let repos = $state<string[]>([]);
   let schedule = $state(job?.schedule ?? '');
   let compression = $state(job?.compression ?? 'lz4');
@@ -178,10 +183,6 @@
       toastError('Name and schedule are required');
       return;
     }
-    if (!repository) {
-      toastError('Please select a repository');
-      return;
-    }
     if (sourceDirs.length === 0) {
       toastError('Please add at least one source directory');
       return;
@@ -194,7 +195,7 @@
     saving = true;
     const payload: JobPayload = {
       name: name.trim(),
-      repository: repository ?? '',
+      repository: repository || name.trim(),
       schedule: schedule.trim(),
       compression: compression.trim() || 'lz4',
       exclude_patterns: excludeArr.join('\n'),
@@ -236,9 +237,13 @@
   <div class="field">
     <label for="job-repo">Borg Repository</label>
     <select id="job-repo" bind:value={repository}>
-      <option value="" disabled>Select a repository</option>
+      <option value="">
+        Auto-create new (repo = {name.trim() || 'job name'})
+      </option>
       {#each repoOptions as r}
-        <option value={r}>{r}</option>
+        {#if r}
+          <option value={r}>{r}</option>
+        {/if}
       {/each}
     </select>
   </div>

@@ -176,11 +176,12 @@ class BackupExecutor:
             # Determine repository path. Jobs may name a specific repository; if they
             # don't (legacy), fall back to the job name.
             repo_name = job.get('repository') or job_name
-            repo_path = os.path.join(self.borgspace_dir, repo_name)
-            
-            # Initialize repository if it doesn't exist
-            if not os.path.exists(repo_path):
-                self._init_repository(repo_path, job['repository_passphrase'], job_logger)
+            # Use-or-create: if the repo directory is missing (e.g. deleted,
+            # or this job uses auto-create), create + initialise it now so the
+            # job always has a repository to write into.
+            repo_path = self.ensure_repository(
+                repo_name, job.get('repository_passphrase'), job_logger
+            )
             
             # Execute main backup
             self._set_phase(job_id, 'borg_create')
@@ -513,6 +514,28 @@ class BackupExecutor:
         if os.path.exists(os.path.join(repo_path, 'config')):
             raise ValueError(f"A repository already exists at {repo_path}")
 
+        self._init_repository(repo_path, passphrase, logger)
+        return repo_path
+
+    def ensure_repository(self, repo_name, passphrase, logger):
+        """Return repo_path for `repo_name`, creating + initialising it if it
+        does not exist (use-or-create).
+
+        Backs explicit "auto-create" jobs and self-heals after a repository is
+        deleted: the next run re-creates it. Tolerates ordinary names (spaces
+        etc.) but refuses names that would escape borgspace (path traversal).
+        """
+        borgspace = self.borgspace_dir
+        repo_path = os.path.join(borgspace, repo_name)
+        if os.path.isdir(repo_path):
+            return repo_path
+        base = os.path.abspath(borgspace)
+        target = os.path.abspath(repo_path)
+        if os.path.commonpath([base, target]) != base:
+            raise Exception(f"Invalid repository name: {repo_name}")
+        logger.info(
+            f"Repository not found at {repo_path}; creating it automatically"
+        )
         self._init_repository(repo_path, passphrase, logger)
         return repo_path
 

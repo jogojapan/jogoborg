@@ -1270,7 +1270,20 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             if not self._validate_cron_schedule(data['schedule']):
                 self._send_error(400, f"Invalid cron schedule: {data['schedule']}. Must be a valid 5-field cron expression (minute hour day month day_of_week)")
                 return
-            
+
+            # Auto-create the repository now if the job uses "auto-create"
+            # (repository = job name) and the repo doesn't exist yet, so it is
+            # initialised and listed immediately rather than only at first run.
+            # Existing repos are used as-is.
+            repo_name = data.get('repository') or data['name']
+            try:
+                BackupExecutor().ensure_repository(
+                    repo_name, data['repository_passphrase'], logger)
+            except Exception as e:
+                logger.error(f"Auto-create repository failed for {repo_name}: {e}")
+                self._send_error(400, f"Failed to auto-create repository '{repo_name}': {e}")
+                return
+
             logger.debug(f"Creating job: {data.get('name')}, has passphrase: {bool(data.get('repository_passphrase'))}")
             
             conn = sqlite3.connect(self.db_path)
