@@ -8,6 +8,7 @@
   import Modal from '../components/Modal.svelte';
   import NewRepositoryDialog from '../components/NewRepositoryDialog.svelte';
   import ArchiveBrowser from '../components/ArchiveBrowser.svelte';
+  import RepoMaintenance from '../components/RepoMaintenance.svelte';
 
   let repositories = $state<Repository[]>([]);
   let loading = $state(true);
@@ -230,6 +231,11 @@
           {/each}
         </ul>
       {/if}
+
+      <RepoMaintenance
+        repoId={dialog.id}
+        encryptionKey={unlockKey || undefined}
+      />
     {/if}
   </Modal>
 {/if}

@@ -54,6 +54,10 @@ _ARCHIVE_BROWSE_MAX_ARCHIVES = 8
 # {'total': nfiles|None, 'done': int, 'running': bool}. Cleared when done.
 _ARCHIVE_SCAN_PROGRESS = {}
 
+# User-initiated repo maintenance runs (borg check / borg check --repair):
+# repo_id -> {'running', 'kind', 'started', 'exit_code', 'output': [line,...]}.
+_MAINT_RUNS = {}
+
 handler = RotatingFileHandler(
     os.path.join(log_dir, 'web_server.log'),
     maxBytes    = 5 * 1024 * 1024,  # 5 MB
@@ -136,8 +140,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 parts = path.split('/')
                 if len(parts) == 7:
                     self._handle_get_archive_progress(parts[3], parts[5])
-                else:
-                    self._send_error(404, "Not found")
+            elif path.startswith('/api/repositories/') and path.endswith('/maintenance'):
+                self._handle_repo_maintenance(path.split('/')[-2])
             elif path.startswith('/'):
                 self._serve_static_file(path)
             else:
@@ -206,6 +210,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     self._handle_release_archive(parts[3], parts[5])
                 else:
                     self._send_error(404, "Not found")
+            elif path.startswith('/api/repositories/') and path.endswith('/check'):
+                self._handle_repo_check(path.split('/')[-2], data)
+            elif path.startswith('/api/repositories/') and path.endswith('/repair'):
+                self._handle_repo_repair(path.split('/')[-2], data)
             elif path == '/api/notifications/test/smtp':
                 self._handle_test_smtp(data)
             elif path == '/api/notifications/test/webhook':
@@ -408,6 +416,156 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error getting repositories: {e}")
             self._send_error(500, "Failed to get repositories")
+
+    def _maintenance_worker(self, repo_id, repo_path, key, kind, verify_data):
+        """Run `borg check`/`borg check --repair` in a background thread,
+        streaming output into _MAINT_RUNS for polling."""
+        run = _MAINT_RUNS.get(repo_id)
+        if run is None:
+            # _start_maintenance creates the entry synchronously; if it is
+            # absent (defensive), recreate it here.
+            run = {
+                'running': True,
+                'kind': kind,
+                'started': time.time(),
+                'exit_code': None,
+                'output': [],
+            }
+            _MAINT_RUNS[repo_id] = run
+        cmd = ['borg', 'check']
+        if kind == 'repair':
+            cmd.append('--repair')
+        elif verify_data:
+            cmd.append('--verify-data')
+        cmd.append(repo_path)
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.PIPE,  # answer borg --repair's YES prompt
+                text=True,
+                env=dict(os.environ, BORG_PASSPHRASE=key),
+            )
+            # `borg check --repair` requires typing 'YES' at a danger prompt;
+            # supply it so the run is non-interactive (plain `borg check` does
+            # not read stdin). Leave the pipe open until the prompt is read.
+            try:
+                proc.stdin.write('YES\n')
+                proc.stdin.flush()
+            except Exception:
+                pass
+            finally:
+                proc.stdin.close()
+            # Read incrementally: borg prints check/repair progress with \r
+            # and no newline, so a line-by-line reader would block forever.
+            buf = ''
+            while True:
+                chunk = proc.stdout.read(4096)
+                if not chunk:
+                    break
+                buf += chunk
+                parts = buf.split('\n')
+                buf = parts.pop()
+                for ln in parts:
+                    ln = ln.rstrip('\r').strip()
+                    if ln:
+                        run['output'].append(ln)
+                        if len(run['output']) > 500:
+                            run['output'] = run['output'][-500:]
+            tail = buf.rstrip('\r').strip()
+            if tail:
+                run['output'].append(tail)
+                if len(run['output']) > 500:
+                    run['output'] = run['output'][-500:]
+            proc.stdout.close()
+            rc = proc.wait()
+            run['exit_code'] = rc
+            logger.info(f"Maintenance {kind} finished for repo {repo_id} rc={rc}")
+        except Exception as e:
+            run['exit_code'] = -1
+            logger.error(f"Maintenance {kind} failed for repo {repo_id}: {e}")
+        finally:
+            run['running'] = False
+
+    def _start_maintenance(self, repo_id, repo_path, key, kind, verify_data):
+        run = _MAINT_RUNS.get(repo_id)
+        if run and run.get('running'):
+            self._send_error(409, "Repository maintenance already running")
+            return False
+        _MAINT_RUNS[repo_id] = {
+            'running': True,
+            'kind': kind,
+            'started': time.time(),
+            'exit_code': None,
+            'output': [],
+        }
+        threading.Thread(
+            target=self._maintenance_worker,
+            args=(repo_id, repo_path, key, kind, verify_data),
+            daemon=True,
+        ).start()
+        return True
+
+    def _handle_repo_check(self, repo_id, data):
+        """Run a read-only `borg check` on a repository."""
+        try:
+            repo_path, repo_name = self._find_repository(repo_id)
+            if not repo_path or not repo_name:
+                self._send_error(404, "Repository not found")
+                return
+            key = self._resolve_key(
+                repo_path, (data.get('encryption_key') or '').strip())
+            if not key:
+                self._send_error(400, "Encryption key required")
+                return
+            if self._start_maintenance(
+                    repo_id, repo_path, key, 'check', bool(data.get('verify_data'))):
+                logger.info(f"Start borg check for repo {repo_id} ({repo_path})")
+                self._send_json_response({'running': True, 'kind': 'check'})
+        except Exception as e:
+            logger.error(f"Error starting check for repo {repo_id}: {e}")
+            self._send_error(500, "Failed to start check")
+
+    def _handle_repo_repair(self, repo_id, data):
+        """Run `borg check --repair` (rebuilds indexes; can be slow)."""
+        try:
+            if not data.get('confirm'):
+                self._send_error(400, "Confirmation required to repair repository")
+                return
+            repo_path, repo_name = self._find_repository(repo_id)
+            if not repo_path or not repo_name:
+                self._send_error(404, "Repository not found")
+                return
+            key = self._resolve_key(
+                repo_path, (data.get('encryption_key') or '').strip())
+            if not key:
+                self._send_error(400, "Encryption key required")
+                return
+            if self._start_maintenance(repo_id, repo_path, key, 'repair', False):
+                logger.info(f"Start borg check --repair for repo {repo_id} ({repo_path})")
+                self._send_json_response({'running': True, 'kind': 'repair'})
+        except Exception as e:
+            logger.error(f"Error starting repair for repo {repo_id}: {e}")
+            self._send_error(500, "Failed to start repair")
+
+    def _handle_repo_maintenance(self, repo_id):
+        """Poll state + output of the running (or most recent) maintenance run."""
+        try:
+            run = _MAINT_RUNS.get(repo_id)
+            if not run:
+                self._send_json_response(
+                    {'running': False, 'kind': None, 'exit_code': None, 'output': []})
+                return
+            self._send_json_response({
+                'running': run['running'],
+                'kind': run['kind'],
+                'exit_code': run['exit_code'],
+                'output': run['output'][-200:],
+            })
+        except Exception as e:
+            logger.error(f"Error reading maintenance state for repo {repo_id}: {e}")
+            self._send_error(500, "Failed to read maintenance state")
 
     def _count_archives(self, repo_path, passphrase):
         """Number of archives in a repository, or None if it can't be read
