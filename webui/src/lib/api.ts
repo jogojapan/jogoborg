@@ -54,6 +54,15 @@ async function request(
   return data ?? {};
 }
 
+function isErrorPayload(v: unknown): v is { error: string } {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    'error' in v &&
+    typeof (v as Record<string, unknown>).error === 'string'
+  );
+}
+
 function isMessagePayload(v: unknown): v is { message: string } {
   return (
     typeof v === 'object' &&
@@ -65,7 +74,16 @@ function isMessagePayload(v: unknown): v is { message: string } {
 
 function errorMessage(data: unknown, status: number): string {
   if (typeof data === 'string' && data) return data;
+  if (isErrorPayload(data)) return data.error;
   if (isMessagePayload(data)) return data.message;
+  // Fallback: pull a readable string out of common keys before giving up.
+  if (data != null && typeof data === 'object') {
+    const rec = data as Record<string, unknown>;
+    for (const k of ['detail', 'error', 'error_message', 'message', 'reason']) {
+      if (typeof rec[k] === 'string' && rec[k]) return rec[k];
+    }
+    return JSON.stringify(rec) || `Request failed (${status})`;
+  }
   if (data != null) return String(data);
   return `Request failed (${status})`;
 }

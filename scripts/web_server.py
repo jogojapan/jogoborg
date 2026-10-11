@@ -65,6 +65,17 @@ formatter = logging.Formatter(
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+def _stable_repo_id(name):
+    """Deterministic, restart-stable repository id from the repository
+    directory name. Python's built-in hash() is salted per-process
+    (PYTHONHASHSEED), so ids built from it change on every server restart;
+    that made repository ids appear to 'move' between sessions and caused
+    silent 404s when a stale id was looked up. This id is stable across
+    restarts and host machines."""
+    raw = hashlib.md5(name.encode('utf-8')).digest()[:2]
+    return int.from_bytes(raw, 'big') % 10000
+
+
 class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         config_dir = os.environ.get('JOGOBORG_CONFIG_DIR', '/config')
@@ -372,7 +383,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                             has_key = repo_path in stored
                             key = self._stored_passphrase(repo_path) if has_key else None
                             repositories.append({
-                                'id': hash(item) % 10000,
+                                'id': _stable_repo_id(item),
                                 'name': item,
                                 'path': repo_path,
                                 'created_at': datetime.fromtimestamp(os.path.getctime(repo_path)).isoformat(),
@@ -412,6 +423,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         try:
             repo_path, repo_name = self._find_repository(repo_id)
             if not repo_path or not repo_name:
+                logger.warning(
+                    f"Passphrase set 404: repository id {repo_id} not found "
+                    f"under borgspace"
+                )
                 self._send_error(404, "Repository not found")
                 return
 
@@ -493,7 +508,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             return None, None
         if os.path.isdir(borgspace):
             for item in os.listdir(borgspace):
-                if hash(item) % 10000 == repo_id:
+                if _stable_repo_id(item) == repo_id:
                     return os.path.join(borgspace, item), item
         return None, None
 
@@ -711,6 +726,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         try:
             repo_path, repo_name = self._find_repository(repo_id)
             if not repo_path or not repo_name:
+                logger.warning(
+                    f"Archive browse 404: repository id {repo_id} not found "
+                    f"under borgspace (stale id from before a server restart?)"
+                )
                 self._send_error(404, "Repository not found")
                 return
 
@@ -757,6 +776,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
             repo_path, repo_name = self._find_repository(repo_id)
             if not repo_path or not repo_name:
+                logger.warning(
+                    f"Archive listing 404: repository id {repo_id} not found "
+                    f"under borgspace"
+                )
                 self._send_error(404, "Repository not found")
                 return
 
