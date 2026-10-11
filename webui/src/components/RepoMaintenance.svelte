@@ -141,7 +141,7 @@
 
 <style>
   .maint {
-    margin-top: 6px;
+    margin: 6px 0 18px;
     padding-top: 12px;
     border-top: 1px solid var(--border);
   }
