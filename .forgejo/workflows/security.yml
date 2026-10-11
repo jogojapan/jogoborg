@@ -151,7 +151,7 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          STATE=${{ success() && 'success' || 'failure' }}
+          STATE=${{ job.status }}
           curl -fsS -X POST "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/statuses/${{ github.sha }}" \
             -H "Authorization: token ${{ github.token }}" \
             -H "Content-Type: application/json" \
