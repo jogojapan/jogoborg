@@ -13,6 +13,8 @@
 
   // per-path size request state
   const sizes = $state(new Map<string, string>());
+  // paths with an in-flight size request
+  const pendingSizes = $state(new Set<string>());
 
   async function load() {
     loading = true;
@@ -52,17 +54,25 @@
   }
 
   async function calcSize(item: SourceItem) {
-    if (sizes.has(item.path)) return;
+    if (sizes.has(item.path) || pendingSizes.has(item.path)) return;
+    pendingSizes.add(item.path);
+    sizes.delete(item.path);
     try {
-      const res = await api.post<{ size: number }>(
+      const res = await api.post<{ size: number; approximate?: boolean }>(
         '/sources/size',
         { path: item.path },
         auth.token
       );
-      sizes.set(item.path, formatBytes(res.size));
-      items = [...items];
-    } catch {
+      sizes.set(
+        item.path,
+        (res.approximate ? '~' : '') + formatBytes(res.size)
+      );
+    } catch (e) {
       sizes.set(item.path, 'Error');
+      toastError('Failed to calculate size: ' + errMsg(e));
+    } finally {
+      pendingSizes.delete(item.path);
+      items = [...items];
     }
   }
 
@@ -109,8 +119,10 @@
           <span class="name">{item.name}</span>
           <div class="small muted">
             {#if item.permissions}Permissions: {item.permissions} · {/if}
-            {#if item.is_directory && sizes.has(item.path)}
-              Size: {sizes.get(item.path)} ·
+            {#if item.is_directory && (sizes.has(item.path) || pendingSizes.has(item.path))}
+              Size: {pendingSizes.has(item.path)
+                ? 'Computing…'
+                : sizes.get(item.path)} ·
             {/if}
             {#if !item.is_directory && item.size != null}
               Size: {formatBytes(item.size)} ·
@@ -121,9 +133,13 @@
         {#if item.is_directory && !sizes.has(item.path)}
           <button
             class="btn ghost size-btn"
-            onclick={(e) => { e.stopPropagation(); calcSize(item); }}
+            disabled={pendingSizes.has(item.path)}
+            onclick={(e) => {
+              e.stopPropagation();
+              calcSize(item);
+            }}
           >
-            Size
+            {pendingSizes.has(item.path) ? 'Computing…' : 'Size'}
           </button>
         {/if}
       </li>
@@ -178,5 +194,13 @@
   .size-btn {
     padding: 4px 10px;
     font-size: 12px;
+    cursor: pointer;
+  }
+  .size-btn:hover:not(:disabled) {
+    color: var(--accent-blue);
+  }
+  .size-btn:disabled {
+    cursor: default;
+    opacity: 0.7;
   }
 </style>

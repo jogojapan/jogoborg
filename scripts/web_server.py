@@ -1832,26 +1832,37 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(404, "Path not found")
                 return
             
+            # Bound the walk so huge directories never hang the request
+            # indefinitely. Once the estimate is robust enough we stop and
+            # report it as approximate.
+            MAX_ESTIMATE_BYTES = 20 * 1024 * 1024 * 1024  # 20 GiB of walked file size
+            MAX_WALKED_FILES = 200_000  # guard against many tiny files
+
             def get_size(start_path):
                 total_size = 0
+                walked_files = 0
+                approximate = False
                 try:
                     if os.path.isfile(start_path):
-                        return os.path.getsize(start_path)
-                    
+                        return os.path.getsize(start_path), False
+
                     for dirpath, dirnames, filenames in os.walk(start_path):
                         for filename in filenames:
                             filepath = os.path.join(dirpath, filename)
                             try:
                                 total_size += os.path.getsize(filepath)
+                                walked_files += 1
                             except (OSError, PermissionError):
                                 continue
+                            if total_size >= MAX_ESTIMATE_BYTES or walked_files >= MAX_WALKED_FILES:
+                                approximate = True
+                                return total_size, True
                 except (OSError, PermissionError):
                     pass
-                return total_size
-            
-            # Run size calculation in a thread to avoid blocking
-            size = get_size(requested_path)
-            self._send_json_response({'size': size})
+                return total_size, approximate
+
+            size, approximate = get_size(requested_path)
+            self._send_json_response({'size': size, 'approximate': approximate})
             
         except Exception as e:
             logger.error(f"Error calculating size: {e}")
