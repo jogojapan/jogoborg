@@ -20,6 +20,12 @@ RUN npm run build
 # Runtime stage - Ubuntu (26.04 LTS "resolute" for newer deps) + Python backend
 FROM ubuntu:26.04
 
+# The ubuntu:26.04 base image bakes in Canonical's /usr/bin/pebble (a static Go
+# service-manager binary) which is untracked by dpkg and unused by Jogoborg, but
+# ships compiled with the vulnerable go1.26.7 stdlib. Remove it so that Go
+# stdlib finding does not appear in the image. (/bin is a symlink to /usr/bin.)
+RUN rm -f /usr/bin/pebble /bin/pebble
+
 # Install system dependencies with explicit apt configuration. Trimmed: no
 # python3-pip (deps are installed via uv), no psmisc/procps (nothing uses
 # ps/fuser/killall), no sqlite3 CLI (Python uses the stdlib module), no
