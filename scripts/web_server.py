@@ -88,6 +88,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
             # Check authentication for protected endpoints
             if self._is_protected_endpoint(path, "GET") and not self._is_authenticated():
+                self._log_auth_failure("GET", path)
                 self._send_error(401, "Unauthorized")
                 return
 
@@ -145,6 +146,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
             # Check authentication for all other POST endpoints
             if self._is_protected_endpoint(path, "POST") and not self._is_authenticated():
+                self._log_auth_failure("POST", path)
                 self._send_error(401, "Unauthorized")
                 return
 
@@ -204,6 +206,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         try:
             # Check authentication for all PUT endpoints
             if not self._is_authenticated():
+                self._log_auth_failure("PUT", urlparse(self.path).path)
                 self._send_error(401, "Unauthorized")
                 return
 
@@ -239,6 +242,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         try:
             # Check authentication for all DELETE endpoints
             if not self._is_authenticated():
+                self._log_auth_failure("DELETE", urlparse(self.path).path)
                 self._send_error(401, "Unauthorized")
                 return
 
@@ -266,6 +270,17 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
         # All non-API endpoints (static files) don't require auth
         return False
+
+    def _log_auth_failure(self, method, path):
+        """Log why an authenticated request was rejected, so 401s are
+        debuggable (missing header vs. stale/mismatched token)."""
+        header = self.headers.get('Authorization')
+        logger.warning(
+            "Auth 401 %s %s — Authorization header present: %s, Bearer prefix: %s",
+            method, path,
+            bool(header),
+            bool(header and header.startswith('Bearer ')),
+        )
 
     def _is_authenticated(self):
         """Check if the request has a valid authentication token."""

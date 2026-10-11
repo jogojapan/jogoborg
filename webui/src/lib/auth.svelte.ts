@@ -1,5 +1,6 @@
 import type { LoginResponse } from './types';
 import * as api from './api';
+import { setOnUnauthorized } from './api';
 import { router } from './router.svelte';
 
 const TOKEN_KEY = 'jogoborg_auth_token';
@@ -75,3 +76,9 @@ export function logout(): void {
   router.path = '/login';
   window.location.hash = '#/login';
 }
+
+// A stale/invalid token (401 on any authenticated call) logs the user out and
+// returns to login, instead of surfacing a confusing "Unauthorized" toast.
+setOnUnauthorized(() => {
+  logout();
+});

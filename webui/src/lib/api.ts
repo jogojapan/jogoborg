@@ -10,6 +10,14 @@ export class ApiError extends Error {
   }
 }
 
+// Invoked when an authenticated request returns 401 (stale/invalid token), so
+// the app can log out and return to the login screen. Not used for /login.
+let onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(hook: (() => void) | null): void {
+  onUnauthorized = hook;
+}
+
 async function request(
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   endpoint: string,
@@ -37,7 +45,11 @@ async function request(
   }
 
   if (!res.ok) {
-    throw new ApiError(res.status, errorMessage(data, res.status));
+    if (res.status === 401 && !endpoint.startsWith('/login')) {
+      onUnauthorized?.();
+    }
+    const detail = `${errorMessage(data, res.status)} (HTTP ${res.status}: ${method} ${endpoint})`;
+    throw new ApiError(res.status, detail);
   }
   return data ?? {};
 }

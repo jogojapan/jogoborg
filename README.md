@@ -307,6 +307,7 @@ While an archive is first being scanned, the explorer shows a **live progress ba
 ### Deployment
 
 - **Job not running** — check quarter-hour schedule; verify source dirs accessible; `docker logs jogoborg | grep scheduler`.
+- **401 Unauthorized in the web UI** — the browser holds a token that no longer matches the server (e.g. after the credentials were changed or the container restarted). The app now logs itself out on 401 so you can re-login. The reason is logged in `web_server.log` under lines starting `Auth 401 …` (e.g. `Authorization header present: True, Bearer prefix: True` means a stale token was sent).
 - **Repository access errors** — verify encryption passphrase, `borgspace` permissions, repo initialized.
 - **S3 sync failures** — check credentials/permissions, network, AWS CLI config.
 - **Database connection issues** — use the "Test Connection" button; check DB host reachability from the container and DB user grants.
