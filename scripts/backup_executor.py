@@ -50,9 +50,24 @@ class BackupExecutor:
         # (SIGINT) on service shutdown.
         self._phases = {}
         self._active_pids = {}
+        # job_id -> job_logs.id, so the current phase / archive can be
+        # persisted on the row and survive an unclean shutdown for recovery.
+        self._log_entry_ids = {}
 
     def _set_phase(self, job_id, phase):
         self._phases[job_id] = phase
+        log_id = self._log_entry_ids.get(job_id)
+        if log_id is not None:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                conn.execute(
+                    "UPDATE job_logs SET phase = ? WHERE id = ?",
+                    (phase, log_id),
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                self.logger.warning(f"Failed to persist phase {phase}: {e}")
 
     def current_phase(self, job_id):
         return self._phases.get(job_id)
@@ -127,7 +142,8 @@ class BackupExecutor:
             raise
         
         # Initialize log entry
-        log_entry_id = self._create_log_entry(job_id, started_at)
+        log_entry_id = self._create_log_entry(job_id, job.get('name'), started_at)
+        self._log_entry_ids[job_id] = log_entry_id
         self._set_phase(job_id, 'starting')
         
         # Track if an exception occurs so we can still run post-command
@@ -232,6 +248,7 @@ class BackupExecutor:
         self._set_phase(job_id, 'completed' if backup_exception is None else 'failed')
         self._active_pids.pop(job_id, None)
         self._phases.pop(job_id, None)
+        self._log_entry_ids.pop(job_id, None)
 
         if backup_exception is None:
             # Job succeeded
@@ -352,16 +369,25 @@ class BackupExecutor:
         logger.setLevel(logging.INFO)
         return logger
 
-    def _create_log_entry(self, job_id, started_at):
-        """Create a log entry in the database."""
+    def _create_log_entry(self, job_id, job_name, started_at):
+        """Create a log entry in the database, denormalizing the job name so
+        recovery after an unclean shutdown can name the job even if the
+        backup_jobs row is later deleted."""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
         try:
-            cursor.execute('''
-            INSERT INTO job_logs (job_id, started_at, status)
-            VALUES (?, ?, 'running')
-            ''', (job_id, started_at.isoformat()))
+            try:
+                cursor.execute('''
+                INSERT INTO job_logs (job_id, job_name, started_at, status)
+                VALUES (?, ?, ?, 'running')
+                ''', (job_id, job_name, started_at.isoformat()))
+            except sqlite3.OperationalError:
+                # job_name column not present (pre-migration DB); retry without it.
+                cursor.execute('''
+                INSERT INTO job_logs (job_id, started_at, status)
+                VALUES (?, ?, 'running')
+                ''', (job_id, started_at.isoformat()))
             
             log_entry_id = cursor.lastrowid
             conn.commit()
@@ -369,6 +395,22 @@ class BackupExecutor:
             
         finally:
             conn.close()
+
+    def _persist_archive_name(self, job_id, archive_name):
+        """Record the archive being created on the job's log row so recovery
+        after an unclean shutdown can name it."""
+        log_id = self._log_entry_ids.get(job_id)
+        if log_id is not None:
+            try:
+                conn = sqlite3.connect(self.db_path)
+                conn.execute(
+                    "UPDATE job_logs SET archive_name = ? WHERE id = ?",
+                    (archive_name, log_id),
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                self.logger.warning(f"Failed to persist archive name: {e}")
 
     def _update_log_entry(self, log_entry_id, finished_at, status,
                          create_duration=None, create_max_memory=None,
@@ -507,6 +549,7 @@ class BackupExecutor:
     def _execute_borg_create(self, job, repo_path, started_at, logger):
         """Execute borg create command with time/memory monitoring."""
         archive_name = f"{job['name']}_{started_at.strftime('%Y%m%d%H%MZ')}"
+        self._persist_archive_name(job.get('id'), archive_name)
         
         logger.info(f"Creating archive: {archive_name}")
         

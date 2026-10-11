@@ -188,6 +188,21 @@ def _migrate_database(cursor):
         cursor.execute("ALTER TABLE job_logs ADD COLUMN db_compact_max_memory INTEGER")
         print("Migration completed: database compact tracking columns added.")
 
+    # Persist job identity + current phase on the log row so that recovery
+    # after an unclean shutdown can report which job/archive/phase was hit
+    # instead of "job-N (phase unknown)".
+    cursor.execute("PRAGMA table_info(job_logs)")
+    log_columns = [row[1] for row in cursor.fetchall()]
+    if 'job_name' not in log_columns:
+        print("Adding job_name column to job_logs table...")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN job_name TEXT")
+    if 'archive_name' not in log_columns:
+        print("Adding archive_name column to job_logs table...")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN archive_name TEXT")
+    if 'phase' not in log_columns:
+        print("Adding phase column to job_logs table...")
+        cursor.execute("ALTER TABLE job_logs ADD COLUMN phase TEXT")
+
     # repositories: ensure the encrypted_passphrase column exists (for
     # auto-unlock of repositories created via the web UI).
     cursor.execute("PRAGMA table_info(repositories)")

@@ -316,22 +316,37 @@ SELECT id, name, repository, schedule, compression, exclude_patterns,
             conn = sqlite3.connect(self.db_path)
             cur = conn.cursor()
             rows = cur.execute(
-                "SELECT l.id, l.job_id, j.name FROM job_logs l "
-                "LEFT JOIN backup_jobs j ON l.job_id = j.id "
+                "SELECT l.id, l.job_id, l.job_name, l.archive_name, l.phase, j.name "
+                "FROM job_logs l LEFT JOIN backup_jobs j ON l.job_id = j.id "
                 "WHERE l.status = 'running'"
             ).fetchall()
-            for log_id, job_id, name in rows:
-                label = name or f"job-{job_id}"
+            for log_id, job_id, log_job_name, archive_name, phase, j_name in rows:
+                label = log_job_name or j_name or f"job-{job_id}"
+                phase_label = phase or 'unknown'
+                details = (
+                    f"Backup job {label!r} was interrupted by an unclean "
+                    f"service shutdown while in phase {phase_label!r}."
+                )
+                if archive_name:
+                    details += f"\nArchive in progress: {archive_name}"
+                details += (
+                    "\n\nThis happens when the service is stopped or killed while a "
+                    "backup is running (e.g. the container is OOM-killed or hard-killed "
+                    "rather than stopped gracefully). Check whether the previous "
+                    "container was OOM-killed with:\n"
+                    "    docker inspect <container> --format '{{.State.OOMKilled}}'\n"
+                    "The archive may be incomplete; you can repair the repository from "
+                    "the web UI (Repositories -> the repository -> Repair) or with:\n"
+                    "    borg check --repair"
+                )
                 cur.execute(
                     "UPDATE job_logs SET status='interrupted', error_message=? WHERE id=?",
-                    ("Interrupted by service shutdown", log_id),
+                    (f"Interrupted by unclean shutdown (phase {phase_label})", log_id),
                 )
                 try:
                     self.notification_service.send_notification(
                         subject=f"Backup job interrupted: {label}",
-                        message=(f"Backup job '{label}' was interrupted by an unclean "
-                                 f"service shutdown (phase unknown). If needed, check the "
-                                 f"repository with `borg check --repair`."),
+                        message=details,
                         is_error=True,
                     )
                 except Exception as e:
@@ -383,8 +398,11 @@ SELECT id, name, repository, schedule, compression, exclude_patterns,
             try:
                 self.notification_service.send_notification(
                     subject=f"Backup job interrupted: {job['name']}",
-                    message=(f"Backup job '{job['name']}' was interrupted by a service "
-                             f"shutdown while it was in phase '{phase}'."),
+                    message=(f"Backup job {job['name']!r} was interrupted by a service "
+                             f"shutdown while it was in phase {phase!r}.\n\n"
+                             f"The archive may be incomplete; repair the repository from "
+                             f"the web UI (Repositories -> the repository -> Repair) or "
+                             f"with:\n    borg check --repair"),
                     is_error=True,
                 )
             except Exception as e:
