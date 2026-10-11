@@ -4,9 +4,11 @@ name: security
 # `make scan`. Runs on push to main, PRs, and weekly (so newly-disclosed CVEs
 # in already-published tags surface even without a code change).
 #
-# Requires a Forgejo act_runner with Docker (to build + scan the image). The
-# scanners (osv-scanner, trivy, gitleaks) are installed fresh in the runner;
-# they are NOT part of the published image.
+# Requires a Forgejo runner with a Docker-capable job environment. The job
+# image (e.g. label `ubuntu:docker://catthehacker/ubuntu:act-latest`) must
+# include bash + the Docker CLI + git + curl + tar; the runner exposes DOCKER_HOST
+# to a dind daemon. The scanners (osv-scanner, trivy, gitleaks) are installed
+# fresh in the runner; they are NOT part of the published image.
 on:
   push:
     branches: [main]
@@ -51,10 +53,12 @@ jobs:
         # PyPI advisory ecosystem. Generate a CycloneDX SBOM and run osv-scanner
         # over it; report-only here (msgpack's CVE-2026-57585 is unfixable via
         # borg's apt dep). Gate on this later with an allowlist if desired.
+        # Scan the docker-saved tarball (make scan-image writes it) so this works
+        # whether the job's Docker is a host daemon or a dind DOCKER_HOST.
         run: |
           set -euxo pipefail
           mkdir -p scan-reports
-          trivy image --format cyclonedx -o scan-reports/image.cdx.json "${SCAN_IMAGE}"
+          trivy image --input scan-reports/image.tar --format cyclonedx -o scan-reports/image.cdx.json
           osv-scanner scan scan-reports/image.cdx.json \
             --format json --output-file scan-reports/osv-sbom.json || true
 

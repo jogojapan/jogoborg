@@ -206,17 +206,18 @@ Reports land in `scan-reports/` (gitignored). `make scan-image` scans the locall
 
 ### Phase 2 — Forgejo CI
 
-A Forgejo Actions workflow (`.forgejo/workflows/security.yml`) runs the same scans on push/PR + weekly. It requires a **self-hosted `act_runner` with Docker** (needed to build + scan the image). It is **inert while the repo is hosted on GitHub**; it activates once the repo lives on Forgejo:
+A Forgejo Actions workflow (`.forgejo/workflows/security.yml`) runs the same scans on push/PR + weekly. It uses the job label `ubuntu:docker://catthehacker/ubuntu:act-latest` (bash + Docker CLI + git + curl + tar). For a runner container with a **dind** daemon (recommended on a shared host — the job builds are isolated from the host's other services), expose the daemon to job containers via the [Forgejo docker-access docs](https://forgejo.org/docs/v15.0/admin/actions/docker-access/):
 
-```bash
-# once the repo is hosted on Forgejo, sync it there and register a runner
-git remote add forgejo <forgejo-repo-url>     # e.g. git@forgejo.example:user/jogoborg.git
-git push forgejo main
-# register an act_runner on a Docker-capable host (see Forgejo admin "Actions -> Runners"),
-# then the security workflow runs on every push/PR and weekly.
+```yaml
+runner:
+  envs:
+    DOCKER_HOST: tcp://dind_container.docker.internal:2375
+container:
+  options: '--add-host=dind_container.docker.internal:host-gateway'
 ```
+and give the dind data dir a volume (e.g. `/opt/forgejo-runner/dind:/var/lib/docker`) so the layer cache survives runner-container recreates.
 
-The runner needs only **Docker** and outbound HTTPS (the workflow installs `osv-scanner`/`trivy`/`gitleaks` fresh using the GitHub release URLs; pin those tool versions in the workflow if your runner is offline/air-gapped). Reports (including the CycloneDX SBOM + `osv-scanner` output that surfaces `msgpack`) are uploaded as workflow artifacts.
+The workflow is **inert while the repo is hosted on GitHub**; it activates once the repo lives on Forgejo (you've already `git remote add forgejo` and pushed). It installs `osv-scanner`/`trivy`/`gitleaks` fresh using the GitHub release URLs (pin those tool versions in the workflow if your runner is offline/air-gapped). Reports — including the CycloneDX SBOM + `osv-scanner` output that surfaces `msgpack` — are uploaded as workflow artifacts.
 
 ## Local Development & Testing
 
