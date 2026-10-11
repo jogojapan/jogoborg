@@ -10,6 +10,7 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import re
 import time
+import fnmatch
 import subprocess
 import threading
 import hashlib
@@ -57,6 +58,9 @@ _ARCHIVE_SCAN_PROGRESS = {}
 # User-initiated repo maintenance runs (borg check / borg check --repair):
 # repo_id -> {'running', 'kind', 'started', 'exit_code', 'output': [line,...]}.
 _MAINT_RUNS = {}
+
+# Repetitive exclude-pattern previews: (tuple(source_paths), pattern) -> {ts, payload}.
+_EXCLUDE_PREVIEW_CACHE = {}
 
 # borg check --repair prints a scary interactive confirmation prompt to stdout
 # before it reads 'YES' from stdin. We answer it automatically, so those lines
@@ -213,6 +217,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._handle_browse_sources(data)
             elif path == '/api/sources/size':
                 self._handle_calculate_size(data)
+            elif path == '/api/excludes/preview':
+                self._handle_exclude_preview(data)
             elif path.startswith('/api/repositories/') and path.endswith('/unlock'):
                 repo_id = path.split('/')[-2]
                 self._handle_unlock_repository(repo_id, data)
@@ -595,6 +601,106 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error reading maintenance state for repo {repo_id}: {e}")
             self._send_error(500, "Failed to read maintenance state")
+
+    @staticmethod
+    def _borg_fm_matches(pattern, path):
+        """True if borg's fm-style `--exclude` pattern matches `path`.
+
+        borg normalises archive paths (leading '/' removed) and default
+        `--exclude` patterns use fm/fnmatch style, where a pattern matches the
+        full path OR its leading segment up to a path separator (so excluding
+        a directory also excludes its subtree) and '*' crosses '/'. We
+        replicate that by testing every '/' boundary ancestor prefix of the
+        path against the pattern."""
+        pat = pattern.lstrip('/')
+        if not pat:
+            return False
+        parts = path.split('/')
+        for i in range(len(parts), 0, -1):
+            if fnmatch.fnmatchcase('/'.join(parts[:i]), pat):
+                return True
+        return False
+
+    def _walk_source(self, base, max_entries=200000, max_depth=80):
+        """Yield '/'-separated relative file paths under `base`, mirroring the
+        subset borg would back up. os.walk(followlinks=False) does not descend
+        into symlinked directories, matching borg's default. Bounded by entry
+        count and depth."""
+        base_count = base.rstrip('/').count('/')
+        count = 0
+        for dirpath, dirnames, filenames in os.walk(base, followlinks=False):
+            if dirpath.count('/') - base_count > max_depth:
+                dirnames[:] = []
+                continue
+            rel_dir = os.path.relpath(dirpath, base)
+            rel_dir = '' if rel_dir == '.' else rel_dir.replace(os.sep, '/')
+            prefix = rel_dir + '/' if rel_dir else ''
+            for fn in filenames:
+                count += 1
+                if count > max_entries:
+                    return
+                yield prefix + fn
+
+    def _handle_exclude_preview(self, data):
+        """Preview how a candidate exclude pattern would match the given source
+        dirs (borg fm semantics), without creating an archive."""
+        try:
+            paths = data.get('paths')
+            pattern = str(data.get('pattern') or '').strip()
+            if not pattern:
+                self._send_error(400, "Pattern is required")
+                return
+            if not isinstance(paths, list) or not paths:
+                self._send_error(400, "Source paths are required")
+                return
+            try:
+                limit = max(1, min(int(data.get('limit') or 20), 100))
+            except (TypeError, ValueError):
+                limit = 20
+
+            cache_key = (tuple(paths), pattern)
+            cached = _EXCLUDE_PREVIEW_CACHE.get(cache_key)
+            if cached and time.time() - cached['ts'] < 120:
+                self._send_json_response(cached['payload'])
+                return
+
+            total, matches, truncated, seen = 0, [], False, []
+            for base in paths:
+                base = str(base).strip()
+                if not base or not os.path.isdir(base):
+                    continue
+                seen.append(base)
+                prefix = base.lstrip('/')
+                for rel in self._walk_source(base):
+                    apath = f"{prefix}/{rel}" if prefix else rel
+                    if self._borg_fm_matches(pattern, apath):
+                        total += 1
+                        if len(matches) < limit:
+                            matches.append(apath)
+                        else:
+                            truncated = True
+                if truncated:
+                    break
+            payload = {
+                'pattern': pattern,
+                'sources': seen,
+                'total': total,
+                'matches': matches,
+                'truncated': truncated,
+            }
+            _EXCLUDE_PREVIEW_CACHE[cache_key] = {
+                'ts': time.time(), 'payload': payload,
+            }
+            if len(_EXCLUDE_PREVIEW_CACHE) > 50:
+                oldest = min(
+                    _EXCLUDE_PREVIEW_CACHE,
+                    key=lambda k: _EXCLUDE_PREVIEW_CACHE[k]['ts'],
+                )
+                del _EXCLUDE_PREVIEW_CACHE[oldest]
+            self._send_json_response(payload)
+        except Exception as e:
+            logger.error(f"Error previewing excludes: {e}")
+            self._send_error(500, "Failed to preview excludes")
 
     def _count_archives(self, repo_path, passphrase):
         """Number of archives in a repository, or None if it can't be read

@@ -26,7 +26,17 @@
   let repos = $state<string[]>([]);
   let schedule = $state(job?.schedule ?? '');
   let compression = $state(job?.compression ?? 'lz4');
-  let excludePatterns = $state(job?.exclude_patterns ?? '');
+  let excludeArr = $state<string[]>(splitExcludes(job?.exclude_patterns));
+  let candidate = $state('');
+  let preview = $state<{
+    loading: boolean;
+    total: number | null;
+    matches: string[];
+    truncated: boolean;
+    error: string | null;
+  } | null>(null);
+  // per-pattern match counts; null = still loading in the background.
+  let excludeCounts = $state<Record<string, number | null>>({});
   let keepDaily = $state(String(job?.keep_daily ?? 7));
   let keepMonthly = $state(String(job?.keep_monthly ?? 6));
   let keepYearly = $state(String(job?.keep_yearly ?? 1));
@@ -55,7 +65,10 @@
       /* non-fatal; job can still be saved */
     }
   }
-  onMount(loadRepos);
+  onMount(() => {
+    loadRepos();
+    refreshExcludeCounts();
+  });
 
   // "View activity" mini Gantt (recent runs, to pick a quiet window)
   let showActivity = $state(false);
@@ -82,6 +95,82 @@
   function addSource(dir: string) {
     if (!sourceDirs.includes(dir)) sourceDirs.push(dir);
     activeDialog = null;
+    refreshExcludeCounts();
+  }
+
+  function splitExcludes(s: string | undefined | null): string[] {
+    return (s ?? '')
+      .split('\n')
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+
+  async function previewPattern() {
+    const pat = candidate.trim();
+    if (!pat) return;
+    preview = {
+      loading: true, total: null, matches: [], truncated: false, error: null,
+    };
+    try {
+      const res = await api.post<{
+        total: number; matches: string[]; truncated: boolean;
+      }>('/excludes/preview', { paths: sourceDirs, pattern: pat }, auth.token);
+      preview = {
+        loading: false,
+        total: res.total,
+        matches: res.matches ?? [],
+        truncated: res.truncated ?? false,
+        error: null,
+      };
+    } catch (e) {
+      preview = {
+        loading: false, total: null, matches: [], truncated: false,
+        error: errMsg(e),
+      };
+    }
+  }
+
+  async function countPattern(pat: string) {
+    if (!sourceDirs.length) {
+      excludeCounts = { ...excludeCounts, [pat]: 0 };
+      return;
+    }
+    try {
+      const res = await api.post<{ total: number }>(
+        '/excludes/preview', { paths: sourceDirs, pattern: pat }, auth.token
+      );
+      excludeCounts = { ...excludeCounts, [pat]: res.total };
+    } catch {
+      excludeCounts = { ...excludeCounts, [pat]: 0 };
+    }
+  }
+
+  function refreshExcludeCounts() {
+    for (const pat of [...excludeArr]) {
+      if (excludeCounts[pat] === undefined) {
+        excludeCounts = { ...excludeCounts, [pat]: null };
+      }
+      countPattern(pat);
+    }
+  }
+
+  function addExclude() {
+    const pat = candidate.trim();
+    if (!pat) return;
+    if (!excludeArr.includes(pat)) {
+      excludeArr = [...excludeArr, pat];
+      excludeCounts = { ...excludeCounts, [pat]: null };
+      countPattern(pat);
+    }
+    candidate = '';
+    preview = null;
+  }
+
+  function removeExclude(pat: string) {
+    excludeArr = excludeArr.filter((p) => p !== pat);
+    const next: Record<string, number | null> = { ...excludeCounts };
+    delete next[pat];
+    excludeCounts = next;
   }
 
   async function saveJob() {
@@ -108,7 +197,7 @@
       repository: repository ?? '',
       schedule: schedule.trim(),
       compression: compression.trim() || 'lz4',
-      exclude_patterns: excludePatterns,
+      exclude_patterns: excludeArr.join('\n'),
       keep_daily: Number(keepDaily) || 7,
       keep_monthly: Number(keepMonthly) || 6,
       keep_yearly: Number(keepYearly) || 1,
@@ -198,10 +287,6 @@
       <input id="job-comp" bind:value={compression} placeholder="lz4" />
     </div>
     <div class="field">
-      <label for="job-excl">Exclude Patterns (one per line)</label>
-      <input id="job-excl" bind:value={excludePatterns} placeholder="*.log&#10;*.tmp" />
-    </div>
-    <div class="field">
       <label for="job-kd">Keep Daily</label>
       <input id="job-kd" type="number" bind:value={keepDaily} />
     </div>
@@ -213,6 +298,88 @@
       <label for="job-ky">Keep Yearly</label>
       <input id="job-ky" type="number" bind:value={keepYearly} />
     </div>
+  </div>
+
+  <h4>Exclude Patterns</h4>
+  <div class="exclude-block">
+    <div class="exclude-input-row">
+      <input
+        bind:value={candidate}
+        placeholder="e.g. *.log  or  /sourcespace/Forgejo/gitea/log  or  *gitea/log*"
+        onkeydown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            previewPattern();
+          }
+        }}
+      />
+      <button
+        class="btn"
+        onclick={previewPattern}
+        disabled={!candidate.trim() || !!preview?.loading}
+      >
+        {preview?.loading ? 'Previewing…' : 'Preview'}
+      </button>
+      <button class="btn" onclick={addExclude} disabled={!candidate.trim()}>
+        <Icon icon="add" /> Add
+      </button>
+    </div>
+
+    {#if preview?.error}
+      <p class="excl-error">{preview.error}</p>
+    {:else if preview && !preview.loading}
+      <div class="excl-preview">
+        {#if preview.total === 0}
+          <p class="excl-warn">
+            No matches — this pattern would exclude nothing. With an absolute
+            source dir a bare token (e.g. <code>gitea/log</code>) matches
+            nothing (borg matches repo-relative paths); try a root path like
+            <code>/sourcespace/…/gitea/log</code> or a glob like
+            <code>*gitea/log*</code>.
+          </p>
+        {:else}
+          <p>
+            {preview.total} matching path{preview.total === 1 ? '' : 's'}
+            {#if preview.truncated}
+              (showing first {preview.matches.length}) — narrowing may help
+            {/if}
+          </p>
+          {#if preview.matches.length}
+            <div class="excl-examples">
+              {#each preview.matches as m}
+                <div class="excl-mono">{m}</div>
+              {/each}
+            </div>
+          {/if}
+        {/if}
+      </div>
+    {/if}
+
+    {#if excludeArr.length}
+      <div class="exclude-list-outer">
+        <div class="exclude-list">
+          {#each excludeArr as pat (pat)}
+            <div class="excl-chip">
+              <span class="excl-pat">{pat}</span>
+              {#if excludeCounts[pat] === null}
+                <span class="excl-count loading"><span class="spinner"></span></span>
+              {:else if excludeCounts[pat] !== undefined}
+                <span class="excl-count">{excludeCounts[pat]}</span>
+              {/if}
+              <button
+                class="icon-btn"
+                aria-label="Remove pattern"
+                onclick={() => removeExclude(pat)}
+              >
+                <Icon icon="close" size={14} />
+              </button>
+            </div>
+          {/each}
+        </div>
+      </div>
+    {:else}
+      <p class="excl-empty muted">No exclusions — all files under the source(s) are backed up.</p>
+    {/if}
   </div>
 
   <h4>Source Directories</h4>
@@ -317,5 +484,99 @@
   }
   .summary {
     margin-top: 12px;
+  }
+  .exclude-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .exclude-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .exclude-input-row input {
+    flex: 1;
+    min-width: 0;
+  }
+  .excl-preview {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-2);
+  }
+  .excl-error {
+    color: var(--error);
+  }
+  .excl-warn {
+    color: var(--warning);
+  }
+  .excl-examples {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 120px;
+    overflow: auto;
+  }
+  .excl-mono {
+    font-family: var(--mono, monospace);
+    font-size: 12px;
+    word-break: break-all;
+  }
+  /* Resizable + scrollable list of confirmed patterns */
+  .exclude-list-outer {
+    resize: vertical;
+    overflow: auto;
+    max-height: 220px;
+    min-height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .excl-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-2);
+  }
+  .excl-pat {
+    flex: 1;
+    font-family: var(--mono, monospace);
+    font-size: 13px;
+    word-break: break-all;
+  }
+  .excl-count {
+    color: var(--text-muted);
+    font-size: 12px;
+    min-width: 22px;
+    text-align: right;
+  }
+  .excl-count.loading {
+    display: inline-flex;
+    align-items: center;
+  }
+  .excl-count .spinner {
+    width: 11px;
+    height: 11px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: excl-spin 0.8s linear infinite;
+    display: inline-block;
+  }
+  @keyframes excl-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .excl-empty {
+    font-size: 13px;
   }
 </style>
