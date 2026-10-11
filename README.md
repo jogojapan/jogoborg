@@ -192,15 +192,15 @@ For fast iteration without rebuilding the Docker image, run the same services di
 
 ### Prerequisites
 
-- Python 3.7+, SQLite 3, **borg**, **gpg**, and the Python packages `cryptography`, `croniter`, `requests` (`make install-deps` or `pip install -r requirements.txt`)
+- Python 3.10+, SQLite 3, **borg**, **gpg**, and **uv** (Python deps are managed by uv; `make install-deps` or `uv sync` installs `cryptography`, `croniter`, `requests`, `boto3`)
 - Node.js 18+ and npm for the Svelte frontend (`cd webui && npm install` once)
 
 ### Quick Start
 
 ```bash
 # From the project root — create and activate a virtual environment (recommended)
-python3 -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+uv sync                          # creates .venv + installs locked deps
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 cd local_test
 ./setup.sh        # one-time: dirs, SQLite DB, GPG key, sample data, env.local

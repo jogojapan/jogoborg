@@ -11,6 +11,7 @@
 .env.local
 .env.example
 venv/
+.venv/
 local_test/
 test_jogoborg_config/
 test_jogoborg_logs/

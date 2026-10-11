@@ -53,6 +53,7 @@ build/
 
 # Python venv
 venv/**
+.venv/**
 /webui/node_modules/
 /webui/dist/
 /webui/src/lib/build-info.ts

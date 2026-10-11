@@ -72,16 +72,19 @@ WORKDIR /app
 # JOGOBORG_WEB_DIR used by web_server.py.
 COPY --from=frontend /app/dist /app/build/web
 
-# Copy only the backend source + requirements (not dev/test data, venvs).
+# Copy only the backend source + project metadata (not dev/test data, venvs).
 COPY scripts/ /app/scripts/
-COPY requirements.txt /app/
+COPY pyproject.toml uv.lock /app/
 
-# Install Python dependencies (no wheel cache left in the image).
-RUN pip3 install --no-cache-dir --break-system-packages \
-    cryptography \
-    requests \
-    croniter \
-    boto3
+# Install Python dependencies with uv, pinned to uv.lock for deterministic
+# versions. uv is a Rust binary; it is removed again so it is NOT shipped (and
+# introduces no Go-stdlib CVEs). --system --break-system-packages mirrors the
+# previous pip3 --break-system-packages against Ubuntu's python.
+COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
+RUN cd /app \
+    && uv export --frozen -o /tmp/requirements.lock.txt \
+    && uv pip install --system --break-system-packages --no-cache -r /tmp/requirements.lock.txt \
+    && rm -f /usr/local/bin/uv /tmp/requirements.lock.txt
 
 # Create required directories
 RUN mkdir -p /sourcespace /borgspace /config /log

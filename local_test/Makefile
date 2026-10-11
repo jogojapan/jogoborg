@@ -33,9 +33,9 @@ help: ## Show this help message
 # Virtual Environment
 # ============================================================================
 
-venv: ## Create Python virtual environment
-	@echo "$(GREEN)Creating Python virtual environment...$(NC)"
-	@python3 -m venv venv
+venv: ## Create Python virtual environment (uv; note: no pip/setuptools seeded)
+	@echo "$(GREEN)Creating Python virtual environment (uv)...$(NC)"
+	@uv venv venv
 	@echo "$(GREEN)Virtual environment created!$(NC)"
 	@echo "Activate with: source venv/bin/activate"
 
@@ -255,9 +255,9 @@ check-deps: ## Check for required dependencies
 	@python3 -c "import cryptography" 2>/dev/null && echo "✓ cryptography" || echo "✗ cryptography not found"
 	@python3 -c "import croniter" 2>/dev/null && echo "✓ croniter" || echo "✗ croniter not found"
 
-install-deps: ## Install Python dependencies
-	@echo "$(GREEN)Installing Python dependencies...$(NC)"
-	@pip3 install cryptography croniter requests
+install-deps: ## Install Python dependencies (uv, from pyproject.toml)
+	@echo "$(GREEN)Installing Python dependencies (uv)...$(NC)"
+	@uv pip install -r ../pyproject.toml
 
 # ============================================================================
 # Documentation

@@ -1,0 +1,17 @@
+[project]
+name = "jogoborg"
+version = "0.11.4"
+description = "Docker-based backup management system built on BorgBackup"
+requires-python = ">=3.10"
+# Dependencies are referenced from scripts/ via sys.path; the project itself is
+# not packaged (no build). uv still manages the environment + lockfile.
+dependencies = [
+    "cryptography>=41.0.0",
+    "croniter>=2.0.0",
+    "requests>=2.31.0",
+    "boto3>=1.34.0",
+]
+
+[tool.uv]
+# Do not try to build/install this repo as a package; only manage the deps.
+package = false

@@ -16,8 +16,8 @@ echo ""
 if [[ -z "$VIRTUAL_ENV" ]]; then
     echo "⚠️  WARNING: Not running in a Python virtual environment"
     echo "   It's recommended to use a virtual environment:"
-    echo "   From project root: python3 -m venv venv"
-    echo "   Then activate: source venv/bin/activate"
+    echo "   From project root: uv sync"
+    echo "   Then activate: source .venv/bin/activate"
     echo ""
     read -p "Continue anyway? (yes/no): " -r
     echo ""
@@ -39,12 +39,16 @@ echo "✓ Python 3 found: $(python3 --version)"
 
 # Install required Python packages
 echo ""
-echo "Installing Python dependencies..."
-if [ -f "$PROJECT_ROOT/requirements.txt" ]; then
-    pip3 install -r "$PROJECT_ROOT/requirements.txt"
-    echo "✓ Python dependencies installed"
+echo "Installing Python dependencies (uv)..."
+if [ -f "$PROJECT_ROOT/pyproject.toml" ]; then
+    if [ -n "$VIRTUAL_ENV" ]; then
+        uv pip install -r "$PROJECT_ROOT/pyproject.toml"
+    else
+        uv pip install --system --break-system-packages -r "$PROJECT_ROOT/pyproject.toml"
+    fi
+    echo "✓ Python dependencies installed (uv)"
 else
-    echo "⚠ Warning: requirements.txt not found"
+    echo "⚠ Warning: pyproject.toml not found"
     echo "  Dependencies may not be installed"
 fi
 
