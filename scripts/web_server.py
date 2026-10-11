@@ -298,7 +298,13 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
             path = urlparse(self.path).path
             
-            if path.startswith('/api/jobs/'):
+            if path.startswith('/api/repositories/') and path.endswith('/passphrase'):
+                repo_id = path.split('/')[-2]
+                if not repo_id:
+                    self._send_error(404, "Not found")
+                    return
+                self._handle_forget_repository_passphrase(repo_id)
+            elif path.startswith('/api/jobs/'):
                 job_id = path.split('/')[-1]
                 self._handle_delete_job(job_id)
             else:
@@ -654,6 +660,42 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error storing repository passphrase: {e}")
             self._send_error(500, "Failed to store passphrase")
+
+    def _handle_forget_repository_passphrase(self, repo_id):
+        """Clear the stored passphrase for an existing repository, if any."""
+        try:
+            repo_path, repo_name = self._find_repository(repo_id)
+            if not repo_path or not repo_name:
+                logger.warning(
+                    f"Passphrase forget 404: repository id {repo_id} not found "
+                    f"under borgspace"
+                )
+                self._send_error(404, "Repository not found")
+                return
+
+            conn = sqlite3.connect(self.db_path)
+            try:
+                conn.execute(
+                    "UPDATE repositories SET encrypted_passphrase = NULL "
+                    "WHERE path = ?",
+                    (repo_path,),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            logger.info(
+                f"Forgot stored passphrase for repository '{repo_name}' "
+                f"(id {repo_id})"
+            )
+            self._send_json_response({
+                'message': 'Passphrase forgotten',
+                'name': repo_name,
+                'has_stored_key': False,
+            })
+        except Exception as e:
+            logger.error(f"Error forgetting repository passphrase: {e}")
+            self._send_error(500, "Failed to forget passphrase")
 
     def _handle_create_repository(self, data):
         """Create a new Borg repository and remember its passphrase."""

@@ -74,6 +74,7 @@
             auth.token
           );
           toastSuccess('Passphrase saved for this repository');
+          if (dialog) dialog.has_stored_key = true; // show forget action
           load(); // refresh has_stored_key on the card
         } catch (e) {
           toastError('Unlocked, but saving the passphrase failed: ' + errMsg(e));
@@ -84,6 +85,18 @@
       toastError('Failed to unlock repository: ' + errMsg(e));
     } finally {
       unlocking = false;
+    }
+  }
+
+  async function forgetPassphrase() {
+    if (!dialog) return;
+    try {
+      await api.del(`/repositories/${dialog.id}/passphrase`, auth.token);
+      if (dialog) dialog.has_stored_key = false;
+      toastSuccess('Passphrase forgotten');
+      load(); // refresh has_stored_key on the card
+    } catch (e) {
+      toastError('Failed to forget passphrase: ' + errMsg(e));
     }
   }
 
@@ -236,6 +249,12 @@
         repoId={dialog.id}
         encryptionKey={unlockKey || undefined}
       />
+    {/if}
+
+    {#if dialog.has_stored_key}
+      <button class="btn ghost" onclick={forgetPassphrase}>
+        <Icon icon="trash" /> Forget saved passphrase
+      </button>
     {/if}
   </Modal>
 {/if}
