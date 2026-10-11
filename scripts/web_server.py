@@ -552,6 +552,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         done = 0
         entries = []
         rc = -1
+        stderr_text = ''
         try:
             proc = subprocess.Popen(
                 ['borg', 'list', '--json-lines', f'{repo_path}::{archive}'],
@@ -575,15 +576,21 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                         st['done'] = done
             proc.stdout.close()
             rc = proc.wait()
+            stderr_text = proc.stderr.read()
             proc.stderr.close()
         finally:
             _ARCHIVE_SCAN_PROGRESS.pop(progress_key, None)
 
         if rc != 0:
-            return None, None
+            # The real borg error was being hidden behind a generic 404.
+            err = stderr_text.strip() or f'exit code {rc}'
+            logger.error(
+                f"borg list failed for {repo_path}::{archive}: {err}"
+            )
+            return None, None, err
 
         base = self._archive_base(entries)
-        return base, self._build_tree(entries, base)
+        return base, self._build_tree(entries, base), None
 
     @staticmethod
     def _archive_base(entries):
@@ -641,24 +648,26 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
     def _archive_dir_items(self, repo_path, archive, key, display_path,
                            repo_name):
-        """Return the children items of display_path (cached), or None if the
-        archive/path cannot be listed."""
+        """Return (items, err) for display_path (cached). items is None and
+        err is None when the archive listed fine but the path is absent;
+        items is None and err is set when the archive itself could not be
+        listed."""
         cache_key = (repo_path, archive)
         now = time.time()
         entry = _ARCHIVE_BROWSE_CACHE.get(cache_key)
         if entry is None or now - entry['ts'] > _ARCHIVE_BROWSE_TTL:
-            base, tree = self._build_archive_tree(repo_path, archive, key)
+            base, tree, err = self._build_archive_tree(repo_path, archive, key)
             if base is None:
-                return None
+                return None, err
             entry = {'base': base, 'ts': now, 'tree': tree}
             _ARCHIVE_BROWSE_CACHE[cache_key] = entry
             self._evict_if_needed()
 
         tree = entry['tree']
         if display_path not in tree:
-            return None
+            return None, None
         entry['ts'] = now  # refresh so active archives aren't evicted
-        return tree[display_path]
+        return tree[display_path], None
 
     def _handle_get_archive_progress(self, repo_id, archive):
         """Live scan progress for an archive being opened."""
@@ -723,9 +732,16 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(400, "Invalid path")
                 return
 
-            items = self._archive_dir_items(
+            items, err = self._archive_dir_items(
                 repo_path, archive, key, path, repo_name
             )
+            if err:
+                logger.error(
+                    f"Archive browse failed for repo {repo_id} archive "
+                    f"{archive}: {err}"
+                )
+                self._send_error(500, f"Failed to read archive: {err}")
+                return
             if items is None:
                 self._send_error(404, "Path not found in archive")
                 return
