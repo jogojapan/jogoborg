@@ -346,10 +346,6 @@ While an archive is first being scanned, the explorer shows a **live progress ba
 - **From rsync/tar** — create jobs pointing at the same sources; phase out the old method gradually.
 - **From another Borg setup** — copy existing repos into `/borgspace`, configure matching schedules, re-enter passphrases in the UI.
 
-## Contributing
-
-See [AGENTS.md](AGENTS.md) for the architecture, code layout, and conventions used by maintainers and automated agents.
-
 ## License
 
 MIT — see [LICENSE](LICENSE).
