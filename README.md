@@ -134,7 +134,7 @@ Open the web interface at `http://your-host:<port>`, log in, then use the sectio
 - **Database dumps** — PostgreSQL or MariaDB/MySQL host, port, credentials, optional table filter; built-in connection test
 - **Pre/Post commands** — run before/after the backup (e.g. `docker stop myservice`); 5 min timeout; non-zero exit logged as warning, does **not** fail the backup
 
-> **Docker commands in jobs**: the container ships the Docker CLI and can mount the Docker socket, enabling `docker stop …`, `docker exec …`, or `docker-compose …` — provided the container has `/var/run/docker.sock` and is in the `docker` group. On SELinux you also need the `label=type:container_runtime_t` security option. See `docker-compose.yml` (`group_add`, `security_opt`, socket mount) for the working configuration.
+> **Docker commands in jobs**: the container ships the Docker CLI and can mount the Docker socket, enabling `docker stop …`, `docker exec …`, or `docker run …` — provided the container has `/var/run/docker.sock` and is in the `docker` group. (`docker compose`/`docker buildx` plugins are not bundled, to keep the image minimal and free of other Go-compiled binaries.) On SELinux you also need the `label=type:container_runtime_t` security option. See `docker-compose.yml` (`group_add`, `security_opt`, socket mount) for the working configuration.
 
 ### Schedule Format
 
