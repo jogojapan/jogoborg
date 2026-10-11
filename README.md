@@ -9,7 +9,8 @@ Jogoborg is a Docker-based backup solution built on [BorgBackup](https://borgbac
 ## Features
 
 - **Automated scheduling** — cron-style jobs restricted to quarter-hour starts
-- **Borg repository management** — create, manage, and browse repositories
+- **Borg repository management** — create, auto-create, browse, check, repair, and delete repositories (repair and deletion require confirmation)
+- **Interactive exclude-pattern preview** — see what a pattern would exclude (first matches + total) before confirming it
 - **Source directory browser** — interactive file tree with permissions and sizes
 - **Database dumps** — PostgreSQL and MariaDB/MySQL before backup
 - **S3/MinIO sync** — automatic repository sync to S3-compatible storage
@@ -114,7 +115,7 @@ Inside `local_test/`, `make docker-build` builds the image with the git version 
 
 Open the web interface at `http://your-host:<port>`, log in, then use the sections:
 
-- **Repositories** — view/manage Borg repositories
+- **Repositories** — create, browse, check/repair, and delete Borg repositories; save or forget a repo passphrase (remembering is opt-in)
 - **Source Directories** — browse the source file tree
 - **Backup Jobs** — configure and monitor jobs
 - **Notifications** — SMTP and webhook setup
@@ -125,7 +126,7 @@ Open the web interface at `http://your-host:<port>`, log in, then use the sectio
 - **Name** — unique identifier
 - **Schedule** — cron expression (must start at `0/15/30/45`), see below
 - **Compression** — Borg algorithm (default `lz4`)
-- **Exclude patterns** — one per line
+- **Exclude patterns** — interactive preview: type a pattern and preview it against the current source dirs (first matches + total, with a warning when it matches nothing) before adding it to the list; confirmed patterns form a scrollable list with per-pattern match counts. Patterns follow borg's repo-relative matching, so use a full path (e.g. `/sourcespace/Forgejo/gitea/log`) or a glob that crosses directories (e.g. `*gitea/log*`) — a bare `gitea/log` matches nothing.
 - **Retention** — keep daily/monthly/yearly archive counts
 
 **Advanced**
