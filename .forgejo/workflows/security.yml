@@ -164,6 +164,171 @@ jobs:
               open("scan-reports/00-security-summary.txt","w").write("")
           PY
 
+      - name: Notify on HIGH/CRITICAL findings (best-effort)
+        # Sends an alert (SMTP email and/or Gotify webhook) ONLY when a scanner
+        # reported a HIGH or CRITICAL finding. Fires on the data in
+        # scan-reports/*.json, not on step exit codes, so a clean run sends
+        # nothing and unrelated infra failures cannot trigger it. Best-effort:
+        # continue-on-error means a notification failure never changes the run
+        # result.
+        #
+        # Configure via Forgejo repo Actions secrets (Settings -> Actions ->
+        # Secrets). All are optional; channels are enabled only when their
+        # secrets are present:
+        #
+        #   Email (enabled when SMTP_HOST or MAIL_TO is set):
+        #     SMTP_HOST  SMTP server hostname (e.g. smtp.example.com)
+        #     SMTP_PORT  SMTP port (default 587, STARTTLS)
+        #     SMTP_USER  SMTP auth username (optional, empty = no auth)
+        #     SMTP_PASS  SMTP auth password (optional)
+        #     MAIL_FROM  From: address (falls back to SMTP_USER if empty)
+        #     MAIL_TO    To: address (comma-separated for multiple)
+        #
+        #   Gotify webhook (enabled when NOTIFY_WEBHOOK_URL is set):
+        #     NOTIFY_WEBHOOK_URL    Gotify message endpoint, e.g.
+        #                           https://gotify.example.com/message
+        #     NOTIFY_WEBHOOK_TOKEN  Gotify app token (optional; appended as
+        #                           ?token= if the URL does not already carry one)
+        if: always()
+        continue-on-error: true
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+          NOTIFY_WEBHOOK_TOKEN: ${{ secrets.NOTIFY_WEBHOOK_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+
+          SEV = {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"LOW":3,"UNKNOWN":4}
+
+          def grade(sev):
+              # Normalize any severity shape to an upper-case grade or "UNKNOWN".
+              if isinstance(sev, str):
+                  s = sev.strip().upper()
+                  return s if s in SEV else "UNKNOWN"
+              if isinstance(sev, list):
+                  best = None
+                  for el in sev:
+                      g = grade(el)
+                      if g != "UNKNOWN" and (best is None or SEV[g] < SEV[best]):
+                          best = g
+                  return best or "UNKNOWN"
+              if isinstance(sev, dict):
+                  for k in ("severity","level","score","type"):
+                      if k in sev:
+                          g = grade(sev[k])
+                          if g != "UNKNOWN":
+                              return g
+                  return "UNKNOWN"
+              try:
+                  s = str(sev).strip().upper()
+                  return s if s in SEV else "UNKNOWN"
+              except Exception:
+                  return "UNKNOWN"
+
+          findings = []  # (grade, tool, id, package)
+
+          def osv(fn):
+              d = json.load(open("scan-reports/"+fn))
+              for r in d.get("results", []):
+                  for p in r.get("packages", []):
+                      for v in p.get("vulnerabilities", []):
+                          findings.append((grade(v.get("database_specific", {}).get("severity") or v.get("severity")),
+                                           "osv-scanner", v.get("id"), p.get("package", {}).get("name")))
+
+          def trivy(fn):
+              d = json.load(open("scan-reports/"+fn))
+              for r in d.get("Results", []):
+                  for v in r.get("Vulnerabilities", []):
+                      findings.append((grade(v.get("Severity")), "trivy",
+                                       v.get("VulnerabilityID"), v.get("PkgName")))
+
+          def gitleaks(fn):
+              d = json.load(open("scan-reports/"+fn))
+              for it in d:
+                  findings.append(("HIGH", "gitleaks", it.get("RuleID"),
+                                   "{0}:{1}".format(it.get("File",""), it.get("StartLine",""))))
+
+          for fn, tool in (("osv-python.json","osv"), ("osv-frontend.json","osv"),
+                           ("osv-sbom.json","osv"), ("trivy-image.json","trivy"),
+                           ("gitleaks.json","gitleaks")):
+              path = "scan-reports/"+fn
+              if not os.path.exists(path):
+                  continue
+              try:
+                  (osv if tool == "osv" else trivy if tool == "trivy" else gitleaks)(fn)
+              except Exception:
+                  pass  # a report that won't parse must not crash the run
+
+          alerts = [f for f in findings if f[0] in ("CRITICAL","HIGH")]
+          if not alerts:
+              print("No HIGH/CRITICAL findings; no notification sent.")
+              raise SystemExit(0)
+
+          # Build the summary: one line per affected package, most severe first.
+          alerts.sort(key=lambda f: (SEV[f[0]], f[2] or ""))
+          lines = []
+          for sev, tool, vid, pkg in alerts:
+              lines.append("- [{0}] {1} {2} ({3})".format(sev, tool, vid or "-", pkg or "unknown"))
+          summary = "\n".join(lines)
+          ncrit = sum(1 for f in alerts if f[0] == "CRITICAL")
+          nhigh = len(alerts) - ncrit
+          subject = "Security scan: {0} CRITICAL / {1} HIGH finding(s)".format(ncrit, nhigh)
+          body = ("Jogoborg security scan detected HIGH/CRITICAL findings:\n\n" + summary
+                  + "\n\nSee the `security-reports` artifact for the full report.")
+
+          # --- Email via SMTP (STARTTLS) ---
+          smtp_host = os.environ.get("SMTP_HOST", "").strip()
+          smtp_user = os.environ.get("SMTP_USER", "").strip()
+          mail_to = os.environ.get("MAIL_TO", "").strip()
+          if smtp_host or mail_to:
+              import smtplib
+              from email.mime.text import MIMEText
+              from email.utils import formatdate
+              if not smtp_host:
+                  print("SMTP_HOST not set; skipping email.")
+              else:
+                  recipients = [r.strip() for r in mail_to.split(",") if r.strip()]
+                  if not recipients:
+                      print("MAIL_TO not set; skipping email.")
+                  else:
+                      port = int(os.environ.get("SMTP_PORT", "587").strip() or "587")
+                      mail_from = os.environ.get("MAIL_FROM", "").strip() or smtp_user
+                      msg = MIMEText(body)
+                      msg["Subject"] = subject
+                      msg["From"] = mail_from
+                      msg["To"] = ", ".join(recipients)
+                      msg["Date"] = formatdate(localtime=True)
+                      with smtplib.SMTP(smtp_host, port, timeout=30) as s:
+                          s.ehlo()
+                          s.starttls()
+                          s.ehlo()
+                          if smtp_user:
+                              s.login(smtp_user, os.environ.get("SMTP_PASS", ""))
+                          s.sendmail(mail_from, recipients, msg.as_string())
+                      print("Email notified {0}".format(", ".join(recipients)))
+
+          # --- Gotify webhook ---
+          url = os.environ.get("NOTIFY_WEBHOOK_URL", "").strip()
+          if url:
+              import urllib.request
+              token = os.environ.get("NOTIFY_WEBHOOK_TOKEN", "").strip()
+              if not url.endswith("/message"):
+                  url = url.rstrip("/") + "/message"
+              if token:
+                  url += ("&" if "?" in url else "?") + "token=" + token
+              payload = {"title": "[Jogoborg] " + subject, "message": body, "priority": 8}
+              req = urllib.request.Request(url, data=json.dumps(payload).encode(),
+                                           headers={"Content-Type": "application/json"})
+              urllib.request.urlopen(req, timeout=30).read()
+              print("Webhook notified")
+          PY
+
       - name: Trivy HTML report
         if: always()
         continue-on-error: true
