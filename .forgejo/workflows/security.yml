@@ -67,6 +67,81 @@ jobs:
       - name: Generate SBOM (Syft, SPDX)
         run: syft scan scan-reports/image.tar -o spdx-json -f scan-reports/sbom.json
 
+      - name: Aggregate security reports (Markdown summary)
+        # Viewing aid only - never fails the run. Parses every JSON report into
+        # 00-security-report.md (severity summary + findings by package).
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          SEV = {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"LOW":3,"UNKNOWN":4}
+          rows = []
+          def add(sev, tool, vid, pkg, ver, fixed, ref):
+              rows.append((sev.upper() if sev else "UNKNOWN", tool, vid or "", pkg or "", ver or "", fixed or "", ref or ""))
+          def osv(fn, tool):
+              d = json.load(open("scan-reports/"+fn))
+              for r in d.get("results", []):
+                  for p in r.get("packages", []):
+                      for v in p.get("vulnerabilities", []):
+                          add(v.get("database_specific", {}).get("severity") or v.get("severity") or "UNKNOWN",
+                              tool, v.get("id"), p.get("package", {}).get("name"), p.get("package", {}).get("version"), "",
+                              "https://osv.dev/vulnerability/"+str(v.get("id","")))
+          def trivy(fn, tool):
+              d = json.load(open("scan-reports/"+fn))
+              for r in d.get("Results", []):
+                  for v in r.get("Vulnerabilities", []):
+                      add(v.get("Severity") or "UNKNOWN", tool, v.get("VulnerabilityID"), v.get("PkgName"),
+                          v.get("InstalledVersion"), v.get("FixedVersion"), v.get("PrimaryURL",""))
+          def gitleaks(fn, tool):
+              d = json.load(open("scan-reports/"+fn))
+              for it in d:
+                  loc = "{}:{}".format(it.get("File",""), it.get("StartLine",""))
+                  add("HIGH", tool, it.get("RuleID"), loc, "", "", loc)
+          jobs = [("osv-python.json","OSV-Scanner (uv.lock)"),
+                  ("osv-frontend.json","OSV-Scanner (webui/package-lock.json)"),
+                  ("osv-sbom.json","OSV-Scanner (CycloneDX SBOM)"),
+                  ("trivy-image.json","Trivy (image, HIGH/CRITICAL)"),
+                  ("gitleaks.json","Gitleaks (secrets)")]
+          for fn, tool in jobs:
+              if os.path.exists("scan-reports/"+fn):
+                  (osv if fn.startswith("osv") else trivy if fn.startswith("trivy") else gitleaks)(fn, tool)
+          rows.sort(key=lambda r: (SEV.get(r[0],9), r[1], r[2]))
+          tools = sorted({r[1] for r in rows})
+          md = ["# Security scan report","","## Severity summary","","| Tool | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |","|---|---|---|---|---|---|"]
+          for t in tools:
+              c = {s: sum(1 for r in rows if r[1]==t and r[0]==s) for s in SEV}
+              md.append("| {} | {} | {} | {} | {} | {} |".format(t, c["CRITICAL"], c["HIGH"], c["MEDIUM"], c["LOW"], c["UNKNOWN"]))
+          md += ["","## Findings by package","","| Severity | Tool | ID | Package / location | Installed | Fixed | Link |","|---|---|---|---|---|---|---|"]
+          for sev,t,vid,pkg,ver,fixed,ref in rows:
+              md.append("| {} | {} | {} | {} | {} | {} | {} |".format(sev,t,vid,pkg,ver,fixed,ref))
+          md += ["","_Source JSON files in this artifact: osv-python.json, osv-frontend.json, trivy-image.json, osv-sbom.json, gitleaks.json, image.cdx.json, sbom.json._"]
+          open("scan-reports/00-security-report.md","w").write("\n".join(md))
+          open("scan-reports/00-security-summary.txt","w").write("\n".join(l for l in md if l.startswith(("| Tool","| OSV","| Trivy","| Gitleaks"))))
+          PY
+
+      - name: Trivy HTML report
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          curl -sfL -o /tmp/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+          trivy image --input scan-reports/image.tar --scanners vuln --severity HIGH,CRITICAL \
+            --format template --template @/tmp/html.tpl -o scan-reports/trivy-report.html || true
+
+      - name: Emit SARIF reports (portable/future - no Forgejo viewer yet)
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euxo pipefail
+          osv-scanner scan uv.lock --format sarif --output-file scan-reports/osv-python.sarif || true
+          osv-scanner scan webui/package-lock.json --format sarif --output-file scan-reports/osv-frontend.sarif || true
+          osv-scanner scan scan-reports/image.cdx.json --format sarif --output-file scan-reports/osv-sbom.sarif || true
+          trivy image --input scan-reports/image.tar --scanners vuln --severity HIGH,CRITICAL \
+            --format sarif -o scan-reports/trivy-image.sarif || true
+          gitleaks detect --source . --report-format sarif --report-path scan-reports/gitleaks.json.sarif --no-banner || true
+
       - name: Report commit status (best-effort)
         # Posts a `security/scan` status so Forgejo branch protection can
         # require it as a merge gate. To make this a REAL gate, grant the job
@@ -83,6 +158,20 @@ jobs:
             -d "{\"state\":\"${STATE}\",\"context\":\"security/scan\",\"description\":\"osv/trivy/gitleaks/syft scan\"}" \
             || echo "status not posted - grant repo:status to the runner to enable the merge gate"
 
+      - name: Post security summary to PR (best-effort)
+        # PR-triggered tokens are read-only, so only works on push/schedule or
+        # with a repo-scoped FORGEJO_TOKEN secret set. Never fails the run.
+        if: always()
+        continue-on-error: true
+        run: |
+          [ -n "${{ github.event.pull_request.number }}" ] || exit 0
+          BODY=$(python3 -c 'import json;print(json.dumps({"body":open("scan-reports/00-security-summary.txt").read()+"\n\nFull report: open the `security-reports` artifact."}))')
+          curl -fsS -X POST \
+            "${{ github.server_url }}/api/v1/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments" \
+            -H "Authorization: token ${FORGEJO_TOKEN:-${{ github.token }}}" \
+            -H "Content-Type: application/json" -d "$BODY" \
+            || echo "PR comment not posted - PR tokens are read-only; set FORGEJO_TOKEN or post on push/schedule"
+
       - name: Upload reports
         if: always()
         # actions/upload-artifact@v4's @actions/artifact v2 client hard-refuses
@@ -95,6 +184,12 @@ jobs:
         uses: https://code.forgejo.org/forgejo/upload-artifact@v4
         with:
           name: security-reports
-          # Reports only (not the ~400 MB docker-save tarball): the JSON
-          # reports + the CycloneDX/Syft SBOMs.
-          path: scan-reports/*.json
+          # Reports only (never the ~400 MB docker-save tarball): JSON reports,
+          # SBOMs, the aggregated Markdown summary, HTML + SARIF. The `00-`
+          # prefix makes 00-security-report.md sort first in artifact view.
+          path: |
+            scan-reports/*.json
+            scan-reports/*.sarif
+            scan-reports/*.html
+            scan-reports/*.md
+            scan-reports/*.txt
