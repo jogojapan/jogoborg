@@ -22,6 +22,10 @@
   let showNew = $state(false);
   let showKeyField = $state(false);
   let remember = $state(false);
+  let delOpen = $state(false);
+  let delInput = $state('');
+  let delDeps = $state<{ id: number; name: string }[]>([]);
+  let delBusy = $state(false);
   let browse = $state<{
     repoId: number;
     repoName: string;
@@ -102,6 +106,42 @@
 
   function closeDialog() {
     dialog = null;
+  }
+
+  async function openDelete() {
+    delOpen = true;
+    delInput = '';
+    delDeps = [];
+    if (!dialog) return;
+    try {
+      const res = await api.get<{ jobs: { id: number; name: string }[] }>(
+        `/repositories/${dialog.id}/dependents`, auth.token
+      );
+      delDeps = res.jobs ?? [];
+    } catch (e) {
+      toastError('Failed to load dependent jobs: ' + errMsg(e));
+    }
+  }
+
+  async function confirmDelete() {
+    if (!dialog) return;
+    if (delInput.trim().toLowerCase() !== `delete ${dialog.name}`.toLowerCase()) return;
+    delBusy = true;
+    try {
+      await api.post(
+        `/repositories/${dialog.id}/delete`,
+        { confirmation: delInput.trim() },
+        auth.token
+      );
+      toastSuccess(`Repository ${dialog.name} deleted`);
+      delOpen = false;
+      dialog = null;
+      load();
+    } catch (e) {
+      toastError('Failed to delete repository: ' + errMsg(e));
+    } finally {
+      delBusy = false;
+    }
   }
 
   function openArchive(a: Archive) {
@@ -256,6 +296,42 @@
         <Icon icon="trash" /> Forget saved passphrase
       </button>
     {/if}
+
+    <button class="btn danger" onclick={openDelete}>
+      <Icon icon="trash" /> Delete repository
+    </button>
+
+    {#if delOpen && dialog}
+      <div class="del-confirm">
+        <p class="muted">
+          Deleting <b>{dialog.name}</b> removes the repository and all its
+          archives from /borgspace. This cannot be undone.
+        </p>
+        {#if delDeps.length}
+          <div class="deps">
+            <b>Warning:</b> these job(s) still reference this repository and
+            will auto-create it (empty) on their next run:
+            <div class="small muted">
+              {delDeps.map((j) => j.name).join(', ')}
+            </div>
+          </div>
+        {/if}
+        <p class="muted">Type <code>delete {dialog.name}</code> to confirm:</p>
+        <input bind:value={delInput} placeholder={'delete ' + dialog.name} />
+        <div class="del-row">
+          <button
+            class="btn danger"
+            onclick={confirmDelete}
+            disabled={delBusy || delInput.trim().toLowerCase() !== ('delete ' + dialog.name).toLowerCase()}
+          >
+            {delBusy ? 'Deleting…' : 'Delete permanently'}
+          </button>
+          <button class="btn ghost" onclick={() => (delOpen = false)}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    {/if}
   </Modal>
 {/if}
 
@@ -321,5 +397,23 @@
     color: var(--text-muted);
     margin: 8px 0;
     cursor: pointer;
+  }
+  .del-confirm {
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-2);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .del-confirm .deps {
+    color: var(--warning);
+  }
+  .del-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
   }
 </style>

@@ -13,6 +13,7 @@ import time
 import fnmatch
 import subprocess
 import threading
+import shutil
 import hashlib
 import secrets
 from croniter import croniter
@@ -165,6 +166,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                     self._handle_get_archive_progress(parts[3], parts[5])
             elif path.startswith('/api/repositories/') and path.endswith('/maintenance'):
                 self._handle_repo_maintenance(path.split('/')[-2])
+            elif path.startswith('/api/repositories/') and path.endswith('/dependents'):
+                self._handle_get_repo_dependents(path.split('/')[-2])
             elif path.startswith('/'):
                 self._serve_static_file(path)
             else:
@@ -239,6 +242,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._handle_repo_check(path.split('/')[-2], data)
             elif path.startswith('/api/repositories/') and path.endswith('/repair'):
                 self._handle_repo_repair(path.split('/')[-2], data)
+            elif path.startswith('/api/repositories/') and path.endswith('/delete'):
+                self._handle_delete_repository(path.split('/')[-2], data)
             elif path == '/api/notifications/test/smtp':
                 self._handle_test_smtp(data)
             elif path == '/api/notifications/test/webhook':
@@ -601,6 +606,80 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error reading maintenance state for repo {repo_id}: {e}")
             self._send_error(500, "Failed to read maintenance state")
+
+    def _handle_get_repo_dependents(self, repo_id):
+        """Jobs referencing this repository (for a delete-time warning)."""
+        try:
+            repo_path, repo_name = self._find_repository(repo_id)
+            if not repo_path or not repo_name:
+                self._send_error(404, "Repository not found")
+                return
+            conn = sqlite3.connect(self.db_path)
+            try:
+                rows = conn.execute(
+                    "SELECT id, name FROM backup_jobs WHERE repository = ?",
+                    (repo_name,),
+                ).fetchall()
+            finally:
+                conn.close()
+            self._send_json_response({
+                'repository': repo_name,
+                'jobs': [{'id': r[0], 'name': r[1]} for r in rows],
+            })
+        except Exception as e:
+            logger.error(f"Error listing dependents for repo {repo_id}: {e}")
+            self._send_error(500, "Failed to list dependent jobs")
+
+    def _handle_delete_repository(self, repo_id, data):
+        """Delete a borg repository (repo dir + DB rows) after the typed
+        confirmation 'delete <name>' is supplied."""
+        try:
+            repo_path, repo_name = self._find_repository(repo_id)
+            if not repo_path or not repo_name:
+                self._send_error(404, "Repository not found")
+                return
+
+            expected = f"delete {repo_name}"
+            if (data.get('confirmation') or '').strip().lower() != expected.lower():
+                self._send_error(
+                    400, f"Confirmation must match: {expected!r}")
+                return
+
+            borgspace = os.environ.get('JOGOBORG_BORGSPACE_DIR', '/borgspace')
+            base = os.path.abspath(borgspace)
+            target = os.path.abspath(repo_path)
+            if os.path.commonpath([base, target]) != base:
+                self._send_error(400, "Refusing to delete a path outside borgspace")
+                return
+
+            conn = sqlite3.connect(self.db_path)
+            try:
+                row = conn.execute(
+                    "SELECT id FROM repositories WHERE path = ?", (repo_path,)
+                ).fetchone()
+                dependents = conn.execute(
+                    "SELECT id, name FROM backup_jobs WHERE repository = ?",
+                    (repo_name,),
+                ).fetchall()
+                if row:
+                    conn.execute(
+                        "DELETE FROM archives WHERE repository_id = ?", (row[0],))
+                    conn.execute(
+                        "DELETE FROM repositories WHERE id = ?", (row[0],))
+                conn.commit()
+            finally:
+                conn.close()
+
+            shutil.rmtree(repo_path, ignore_errors=True)
+            logger.info(f"Deleted repository {repo_name} ({repo_path})")
+            self._send_json_response({
+                'message': f'Repository {repo_name!r} deleted',
+                'name': repo_name,
+                'dependent_jobs': [{'id': j[0], 'name': j[1]} for j in dependents],
+            })
+        except Exception as e:
+            logger.error(f"Error deleting repository {repo_id}: {e}")
+            self._send_error(500, "Failed to delete repository")
 
     @staticmethod
     def _borg_fm_matches(pattern, path):
