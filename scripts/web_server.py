@@ -1837,15 +1837,16 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             # report it as approximate.
             MAX_ESTIMATE_BYTES = 20 * 1024 * 1024 * 1024  # 20 GiB of walked file size
             MAX_WALKED_FILES = 200_000  # guard against many tiny files
+            MAX_ESTIMATE_SECONDS = 5.0  # return an approximate estimate promptly
 
             def get_size(start_path):
+                if os.path.isfile(start_path):
+                    return os.path.getsize(start_path), False
                 total_size = 0
                 walked_files = 0
                 approximate = False
+                start = time.time()
                 try:
-                    if os.path.isfile(start_path):
-                        return os.path.getsize(start_path), False
-
                     for dirpath, dirnames, filenames in os.walk(start_path):
                         for filename in filenames:
                             filepath = os.path.join(dirpath, filename)
@@ -1854,7 +1855,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                                 walked_files += 1
                             except (OSError, PermissionError):
                                 continue
-                            if total_size >= MAX_ESTIMATE_BYTES or walked_files >= MAX_WALKED_FILES:
+                            if (total_size >= MAX_ESTIMATE_BYTES
+                                    or walked_files >= MAX_WALKED_FILES
+                                    or time.time() - start >= MAX_ESTIMATE_SECONDS):
                                 approximate = True
                                 return total_size, True
                 except (OSError, PermissionError):

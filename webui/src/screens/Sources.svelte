@@ -119,10 +119,12 @@
           <span class="name">{item.name}</span>
           <div class="small muted">
             {#if item.permissions}Permissions: {item.permissions} · {/if}
-            {#if item.is_directory && (sizes.has(item.path) || pendingSizes.has(item.path))}
-              Size: {pendingSizes.has(item.path)
-                ? 'Computing…'
-                : sizes.get(item.path)} ·
+            {#if item.is_directory && (pendingSizes.has(item.path) || sizes.has(item.path))}
+              Size: {#if pendingSizes.has(item.path)}
+                <span class="mini-spinner"></span> Computing…
+              {:else}
+                {sizes.get(item.path)}
+              {/if} ·
             {/if}
             {#if !item.is_directory && item.size != null}
               Size: {formatBytes(item.size)} ·
@@ -139,7 +141,11 @@
               calcSize(item);
             }}
           >
-            {pendingSizes.has(item.path) ? 'Computing…' : 'Size'}
+            {#if pendingSizes.has(item.path)}
+              <span class="mini-spinner"></span> Computing…
+            {:else}
+              Size
+            {/if}
           </button>
         {/if}
       </li>
@@ -201,6 +207,24 @@
   }
   .size-btn:disabled {
     cursor: default;
-    opacity: 0.7;
+    opacity: 0.8;
+  }
+  .size-btn .mini-spinner {
+    vertical-align: middle;
+    margin-right: 4px;
+  }
+  .mini-spinner {
+    width: 11px;
+    height: 11px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: size-spin 0.8s linear infinite;
+    display: inline-block;
+  }
+  @keyframes size-spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
