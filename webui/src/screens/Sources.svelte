@@ -54,8 +54,13 @@
   }
 
   async function calcSize(item: SourceItem) {
-    if (sizes.has(item.path) || pendingSizes.has(item.path)) return;
-    pendingSizes.add(item.path);
+    if (pendingSizes.has(item.path)) return;
+    const prior = sizes.get(item.path);
+    if (prior !== undefined && prior !== 'Error') return; // already computed
+    // Reassign the reactive containers so the spinner shows immediately
+    // (mutating a $state Set/Map in place is not reactive).
+    pendingSizes = new Set(pendingSizes).add(item.path);
+    sizes = new Map(sizes);
     sizes.delete(item.path);
     try {
       const res = await api.post<{ size: number; approximate?: boolean }>(
@@ -63,14 +68,15 @@
         { path: item.path },
         auth.token
       );
-      sizes.set(
+      sizes = new Map(sizes).set(
         item.path,
         (res.approximate ? '~' : '') + formatBytes(res.size)
       );
     } catch (e) {
-      sizes.set(item.path, 'Error');
+      sizes = new Map(sizes).set(item.path, 'Error');
       toastError('Failed to calculate size: ' + errMsg(e));
     } finally {
+      pendingSizes = new Set(pendingSizes);
       pendingSizes.delete(item.path);
       items = [...items];
     }
@@ -132,7 +138,7 @@
             {#if item.last_modified}Modified: {formatDate(item.last_modified)}{/if}
           </div>
         </div>
-        {#if item.is_directory && !sizes.has(item.path)}
+        {#if item.is_directory && (sizes.get(item.path) === undefined || sizes.get(item.path) === 'Error')}
           <button
             class="btn ghost size-btn"
             disabled={pendingSizes.has(item.path)}
