@@ -65,6 +65,18 @@ formatter = logging.Formatter(
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+# Mirror the app log to stderr as well, so `docker logs <container>` always
+# shows it even if the /log volume is missing/not mounted. The default
+# BaseHTTPRequestHandler access lines already go to stderr.
+console = logging.StreamHandler()
+console.setFormatter(logging.Formatter('[%(levelname)s] %(message)s'))
+console.setLevel(logging.INFO)
+logger.addHandler(console)
+
+# Bumped whenever this web_server changes; logged at startup so it is possible
+# to tell from `docker logs` which revision is actually running.
+WEB_SERVER_MARKER = 'tags/web-archive-browse-v7'
+
 def _stable_repo_id(name):
     """Deterministic, restart-stable repository id from the repository
     directory name. Python's built-in hash() is salted per-process
@@ -605,7 +617,19 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             return None, None, err
 
         base = self._archive_base(entries)
-        return base, self._build_tree(entries, base), None
+        tree = self._build_tree(entries, base)
+        logger.info(
+            f"BROWSE scan {repo_path}::{archive}: {len(entries)} entries, "
+            f"base={base!r}, root_has_children={('/' in tree)}"
+        )
+        if entries and not tree:
+            logger.warning(
+                f"BROWSE: archive {repo_path}::{archive} lists {len(entries)} "
+                f"entry/entries but no children — the source tree was empty at "
+                f"backup time (empty dir, all files excluded, or the source was "
+                f"not mounted into the container?)."
+            )
+        return base, tree, None
 
     @staticmethod
     def _archive_base(entries):
@@ -664,9 +688,10 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
     def _archive_dir_items(self, repo_path, archive, key, display_path,
                            repo_name):
         """Return (items, err) for display_path (cached). items is None and
-        err is None when the archive listed fine but the path is absent;
-        items is None and err is set when the archive itself could not be
-        listed."""
+        err is set when the archive itself could not be listed. When the
+        archive listed fine but the path has no children (e.g. an archive
+        holding only its top-level directory, i.e. an empty-at-backup source),
+        return ([], None) so the folder shows as empty instead of erroring."""
         cache_key = (repo_path, archive)
         now = time.time()
         entry = _ARCHIVE_BROWSE_CACHE.get(cache_key)
@@ -680,7 +705,7 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
 
         tree = entry['tree']
         if display_path not in tree:
-            return None, None
+            return [], None
         entry['ts'] = now  # refresh so active archives aren't evicted
         return tree[display_path], None
 
@@ -751,6 +776,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(400, "Invalid path")
                 return
 
+            logger.info(
+                f"BROWSE {repo_id} archive={archive} path={path} repo={repo_path}"
+            )
             items, err = self._archive_dir_items(
                 repo_path, archive, key, path, repo_name
             )
@@ -762,6 +790,11 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 self._send_error(500, f"Failed to read archive: {err}")
                 return
             if items is None:
+                logger.warning(
+                    f"BROWSE 404 {repo_id}/{archive} path={path!r}: archive "
+                    f"listed OK but display tree lacks this path "
+                    f"(empty archive or base mismatch)"
+                )
                 self._send_error(404, "Path not found in archive")
                 return
             self._send_json_response({'path': path, 'items': items})
@@ -1624,7 +1657,7 @@ def run_server():
         logger.error(f"Database init/migration failed at startup: {e}")
 
     server = ThreadingHTTPServer(('0.0.0.0', port), JogoborgHTTPHandler)
-    logger.info(f"Starting Jogoborg web server on port {port}")
+    logger.info(f"Starting Jogoborg web server on port {port} [{WEB_SERVER_MARKER}]")
     
     try:
         server.serve_forever()
