@@ -17,10 +17,14 @@ RUN npm ci --no-audit --no-fund
 COPY webui/ .
 RUN npm run build
 
-# Runtime stage - Ubuntu with Python and backend services
-FROM ubuntu:24.04
+# Runtime stage - Ubuntu (26.04 LTS "resolute" for newer deps) + Python backend
+FROM ubuntu:26.04
 
-# Install system dependencies with explicit apt configuration
+# Install system dependencies with explicit apt configuration. Trimmed: no
+# python3-pip (deps are installed via uv), no psmisc/procps (nothing uses
+# ps/fuser/killall), no sqlite3 CLI (Python uses the stdlib module), no
+# apt-transport-https (Ubuntu >=22.04 has native https). gnupg + lsb-release
+# are kept for the apt repo setups below (PGDG + Docker).
 RUN apt-get clean && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -28,14 +32,9 @@ RUN apt-get clean && \
     python3 \
     borgbackup \
     gnupg \
-    sqlite3 \
     postgresql-client \
     mariadb-client \
-    python3-pip \
-    psmisc \
-    procps \
     ca-certificates \
-    apt-transport-https \
     lsb-release \
     time \
     && rm -rf /var/lib/apt/lists/*
@@ -60,7 +59,7 @@ RUN apt-get update && \
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli=5:29.9.0-1~ubuntu.24.04~noble \
+    && apt-get install -y --no-install-recommends docker-ce-cli=5:29.9.0-1~ubuntu.26.04~resolute \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
