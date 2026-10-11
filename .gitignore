@@ -58,6 +58,11 @@ venv/**
 /webui/dist/
 /webui/src/lib/build-info.ts
 
+# Security scan reports
+scan-reports/
+*.sarif
+sbom*.json
+
 # Local-only agent guidance (never commit)
 AGENTS.md
 **/AGENTS.md

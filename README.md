@@ -186,6 +186,24 @@ Each job gets its own log file; memory usage is tracked live during Borg operati
 - Job logs: `/log/<job-name>.log`; scheduler: `/log/scheduler.log`; web server: `/log/web_server.log`
 - Metrics: backup duration, peak memory, success/failure, repository sizes, archive counts
 
+## Security Scanning
+
+External scanners run on the **host / CI runner — they are not installed into the image.** Install the binaries on `PATH` once:
+- `osv-scanner` — `curl -o /usr/local/bin/osv-scanner -L https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 && chmod +x /usr/local/bin/osv-scanner`
+- `trivy` — `curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin`
+- `gitleaks` — release binary from `gitleaks/gitleaks`
+
+Then:
+```bash
+cd local_test
+make scan            # osv-scanner (uv.lock + webui package-lock.json), gitleaks, trivy image
+make scan-image      # trivy on the built image (HIGH,CRITICAL; --ignore-unfixed)
+make scan-clean      # remove ../scan-reports/
+```
+Reports land in `scan-reports/` (gitignored). `make scan-image` scans the locally built `SCAN_IMAGE` (default `jogoborg:scan`; build it with `docker build -t jogoborg:scan .`).
+
+> **Advisory gap to know about:** Trivy matches Debian/PyPI advisories but does **not** surface PyPI-ecosystem CVEs for apt-installed Python packages. Example: borg's `python3-msgpack 1.1.2` carries PyPI advisories `CVE-2026-57585` / `PYSEC-2026-3625` which Trivy's image scan won't report; a `osv-scanner` pass over a generated CycloneDX SBOM covers them (intended for the Forgejo CI job, Phase 2).
+
 ## Local Development & Testing
 
 For fast iteration without rebuilding the Docker image, run the same services directly on your machine from `local_test/`. The local environment mirrors the container layout (`config/`, `borgspace/`, `logs/`, `sourcespace/`) and uses the identical codebase.

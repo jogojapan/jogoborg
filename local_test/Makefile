@@ -268,3 +268,53 @@ docs: ## Show documentation
 
 docs-testing: ## Show maintainer/agent documentation
 	@less ../AGENTS.md
+
+# ============================================================================
+# Security scanning (Phase 1)
+# ----------------------------------------------------------------------------
+# External scanners run on the host / CI runner — they are NOT installed into
+# the published image. Install the binaries on PATH once (see AGENTS.md):
+#   osv-scanner, trivy, gitleaks
+# Reports are written to SCAN_REPORT_DIR. The image scan requires a locally
+# built image (make docker-build, or `docker build -t $(SCAN_IMAGE) .`).
+# NOTE: trivy matches Debian/PyPI advisories; it does NOT surface PyPI-ecosystem
+# CVEs for apt-installed python packages (e.g. python3-msgpack 1.1.2 -> PYSEC),
+# which an osv-scanner pass over an SBOM would. See AGENTS.md.
+# ----------------------------------------------------------------------------
+SCAN_REPORT_DIR ?= ../scan-reports
+SCAN_IMAGE ?= jogoborg:scan
+SCAN_TRIVY_SEVERITY ?= HIGH,CRITICAL
+
+.PHONY: scan scan-python scan-frontend scan-secrets scan-image security scan-clean scan-check
+
+scan-check:
+	@mkdir -p $(SCAN_REPORT_DIR)
+	@for t in osv-scanner trivy gitleaks; do command -v $$t >/dev/null 2>&1 || { echo "Missing tool: $$t (install it; see AGENTS.md 'Security scanning')"; exit 1; }; done
+
+scan: scan-check scan-python scan-frontend scan-secrets scan-image
+	@echo "Security scans done. Reports in $(SCAN_REPORT_DIR)."
+
+security: scan
+
+scan-python: scan-check
+	@echo "--- osv-scanner: python deps (uv.lock) ---"
+	osv-scanner scan -L ../uv.lock --format json --output-file $(SCAN_REPORT_DIR)/osv-python.json 2>/dev/null || echo "  findings present - see osv-python.json"
+
+scan-frontend: scan-check
+	@echo "--- osv-scanner: frontend (package-lock.json) ---"
+	osv-scanner scan -L ../webui/package-lock.json --format json --output-file $(SCAN_REPORT_DIR)/osv-frontend.json 2>/dev/null || echo "  findings present - see osv-frontend.json"
+
+scan-secrets: scan-check
+	@echo "--- gitleaks: secrets ---"
+	gitleaks detect --source .. --no-banner --report-path $(SCAN_REPORT_DIR)/gitleaks.json --report-format json --exit-code 1 || { echo "SECRETS FOUND - see gitleaks.json"; exit 1; }
+	@echo "  no secrets leaked"
+
+scan-image: scan-check
+	@echo "--- trivy: image $(SCAN_IMAGE) at $(SCAN_TRIVY_SEVERITY) ---"
+	@docker save $(SCAN_IMAGE) -o $(SCAN_REPORT_DIR)/image.tar >/dev/null 2>&1 || { echo "Build the image first: docker build -t $(SCAN_IMAGE) ."; exit 1; }
+	trivy image --scanners vuln --input $(SCAN_REPORT_DIR)/image.tar --severity $(SCAN_TRIVY_SEVERITY) --ignore-unfixed --no-progress --exit-code 1 \
+	--format json --output $(SCAN_REPORT_DIR)/trivy-image.json || { echo "IMAGE VULNERABILITIES ($(SCAN_TRIVY_SEVERITY)) - see trivy-image.json"; exit 1; }
+	@echo "  image clean at $(SCAN_TRIVY_SEVERITY)"
+
+scan-clean:
+	@rm -rf ../scan-reports
