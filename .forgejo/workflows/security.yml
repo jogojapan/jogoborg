@@ -1,0 +1,66 @@
+name: security
+
+# Security/vulnerability scanning run against the same tools as the local
+# `make scan`. Runs on push to main, PRs, and weekly (so newly-disclosed CVEs
+# in already-published tags surface even without a code change).
+#
+# Requires a Forgejo act_runner with Docker (to build + scan the image). The
+# scanners (osv-scanner, trivy, gitleaks) are installed fresh in the runner;
+# they are NOT part of the published image.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+
+jobs:
+  scan:
+    runs-on: ubuntu
+    permissions:
+      contents: read
+      statuses: write
+    env:
+      SCAN_IMAGE: jogoborg:ci
+      SCAN_THRESHOLD: high
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install scanners (host runner, not the image)
+        run: |
+          set -euxo pipefail
+          mkdir -p /opt/scan && cd /opt/scan
+          curl -sSfL -o osv-scanner \
+            https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
+          chmod +x osv-scanner
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /opt/scan
+          curl -sSfL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/latest/download/gitleaks_linux_x64.tar.gz
+          tar -xzf gitleaks.tar.gz -C /opt/scan
+          echo "/opt/scan" >> "$GITHUB_PATH"
+
+      - name: Build image
+        run: docker build -t "${SCAN_IMAGE}" .
+
+      - name: Scan (uv.lock + package-lock.json, secrets, image HIGH/CRITICAL)
+        run: make -C local_test scan
+
+      - name: SBOM + OSV scan (surfaces apt-python PyPI CVEs e.g. msgpack 1.1.2)
+        # Trivy's image scan does not map apt-installed python packages to the
+        # PyPI advisory ecosystem. Generate a CycloneDX SBOM and run osv-scanner
+        # over it; report-only here (msgpack's CVE-2026-57585 is unfixable via
+        # borg's apt dep). Gate on this later with an allowlist if desired.
+        run: |
+          set -euxo pipefail
+          mkdir -p scan-reports
+          trivy image --format cyclonedx -o scan-reports/image.cdx.json "${SCAN_IMAGE}"
+          osv-scanner scan scan-reports/image.cdx.json \
+            --format json --output-file scan-reports/osv-sbom.json || true
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: scan-reports/

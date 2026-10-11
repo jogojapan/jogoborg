@@ -202,7 +202,21 @@ make scan-clean      # remove ../scan-reports/
 ```
 Reports land in `scan-reports/` (gitignored). `make scan-image` scans the locally built `SCAN_IMAGE` (default `jogoborg:scan`; build it with `docker build -t jogoborg:scan .`).
 
-> **Advisory gap to know about:** Trivy matches Debian/PyPI advisories but does **not** surface PyPI-ecosystem CVEs for apt-installed Python packages. Example: borg's `python3-msgpack 1.1.2` carries PyPI advisories `CVE-2026-57585` / `PYSEC-2026-3625` which Trivy's image scan won't report; a `osv-scanner` pass over a generated CycloneDX SBOM covers them (intended for the Forgejo CI job, Phase 2).
+> **Advisory gap to know about:** Trivy matches Debian/PyPI advisories but does **not** surface PyPI-ecosystem CVEs for apt-installed Python packages. Example: borg's `python3-msgpack 1.1.2` carries PyPI advisories `CVE-2026-57585` / `PYSEC-2026-3625` which Trivy's image scan won't report; a `osv-scanner` pass over a generated CycloneDX SBOM covers them (already wired into the Forgejo workflow below).
+
+### Phase 2 — Forgejo CI
+
+A Forgejo Actions workflow (`.forgejo/workflows/security.yml`) runs the same scans on push/PR + weekly. It requires a **self-hosted `act_runner` with Docker** (needed to build + scan the image). It is **inert while the repo is hosted on GitHub**; it activates once the repo lives on Forgejo:
+
+```bash
+# once the repo is hosted on Forgejo, sync it there and register a runner
+git remote add forgejo <forgejo-repo-url>     # e.g. git@forgejo.example:user/jogoborg.git
+git push forgejo main
+# register an act_runner on a Docker-capable host (see Forgejo admin "Actions -> Runners"),
+# then the security workflow runs on every push/PR and weekly.
+```
+
+The runner needs only **Docker** and outbound HTTPS (the workflow installs `osv-scanner`/`trivy`/`gitleaks` fresh using the GitHub release URLs; pin those tool versions in the workflow if your runner is offline/air-gapped). Reports (including the CycloneDX SBOM + `osv-scanner` output that surfaces `msgpack`) are uploaded as workflow artifacts.
 
 ## Local Development & Testing
 
