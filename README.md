@@ -13,7 +13,7 @@ Jogoborg is a Docker-based backup solution built on [BorgBackup](https://borgbac
 - **Interactive exclude-pattern preview** — see what a pattern would exclude (first matches + total) before confirming it
 - **Source directory browser** — interactive file tree with permissions and sizes
 - **Database dumps** — PostgreSQL and MariaDB/MySQL before backup
-- **S3/MinIO sync** — automatic repository sync to S3-compatible storage
+- **S3/RustFS/SeaweedFS sync** — automatic repository sync to S3-compatible storage
 - **Pre/post commands** — run custom commands (incl. Docker) around backups
 - **Memory monitoring** — peak memory tracked per operation
 - **Notifications** — SMTP email and Gotify webhook
