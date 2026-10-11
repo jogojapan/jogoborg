@@ -82,10 +82,35 @@ jobs:
           import json, os
           SEV = {"CRITICAL":0,"HIGH":1,"MEDIUM":2,"LOW":3,"UNKNOWN":4}
           rows = []
-          def add(sev, tool, vid, pkg, ver, fixed, ref):
+          def sev_str(sev):
+              # Normalize any severity shape to an upper-case grade or "UNKNOWN".
+              if isinstance(sev, str):
+                  s = sev.strip().upper()
+                  return s if s in SEV else "UNKNOWN"
               if isinstance(sev, list):
-                  sev = sev[0] if sev else "UNKNOWN"
-              rows.append((sev.upper() if sev else "UNKNOWN", tool, vid or "", pkg or "", ver or "", fixed or "", ref or ""))
+                  # Pick the highest grade present among the elements.
+                  best = None
+                  for el in sev:
+                      g = sev_str(el)
+                      if g != "UNKNOWN" and (best is None or SEV[g] < SEV[best]):
+                          best = g
+                  return best or "UNKNOWN"
+              if isinstance(sev, dict):
+                  # CVSS/severity objects: try the common keys, else UNKNOWN.
+                  for k in ("severity", "level", "score", "type"):
+                      if k in sev:
+                          g = sev_str(sev[k])
+                          if g != "UNKNOWN":
+                              return g
+                  return "UNKNOWN"
+              # None / numbers / anything else: coerce safely.
+              try:
+                  s = str(sev).strip().upper()
+                  return s if s in SEV else "UNKNOWN"
+              except Exception:
+                  return "UNKNOWN"
+          def add(sev, tool, vid, pkg, ver, fixed, ref):
+              rows.append((sev_str(sev), tool, vid or "", pkg or "", ver or "", fixed or "", ref or ""))
           def osv(fn, tool):
               d = json.load(open("scan-reports/"+fn))
               for r in d.get("results", []):
@@ -110,21 +135,33 @@ jobs:
                   ("osv-sbom.json","OSV-Scanner (CycloneDX SBOM)"),
                   ("trivy-image.json","Trivy (image, HIGH/CRITICAL)"),
                   ("gitleaks.json","Gitleaks (secrets)")]
-          for fn, tool in jobs:
-              if os.path.exists("scan-reports/"+fn):
-                  (osv if fn.startswith("osv") else trivy if fn.startswith("trivy") else gitleaks)(fn, tool)
-          rows.sort(key=lambda r: (SEV.get(r[0],9), r[1], r[2]))
-          tools = sorted({r[1] for r in rows})
-          md = ["# Security scan report","","## Severity summary","","| Tool | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |","|---|---|---|---|---|---|"]
-          for t in tools:
-              c = {s: sum(1 for r in rows if r[1]==t and r[0]==s) for s in SEV}
-              md.append("| {} | {} | {} | {} | {} | {} |".format(t, c["CRITICAL"], c["HIGH"], c["MEDIUM"], c["LOW"], c["UNKNOWN"]))
-          md += ["","## Findings by package","","| Severity | Tool | ID | Package / location | Installed | Fixed | Link |","|---|---|---|---|---|---|---|"]
-          for sev,t,vid,pkg,ver,fixed,ref in rows:
-              md.append("| {} | {} | {} | {} | {} | {} | {} |".format(sev,t,vid,pkg,ver,fixed,ref))
-          md += ["","_Source JSON files in this artifact: osv-python.json, osv-frontend.json, trivy-image.json, osv-sbom.json, gitleaks.json, image.cdx.json, sbom.json._"]
-          open("scan-reports/00-security-report.md","w").write("\n".join(md))
-          open("scan-reports/00-security-summary.txt","w").write("\n".join(l for l in md if l.startswith(("| Tool","| OSV","| Trivy","| Gitleaks"))))
+          warnings = []
+          try:
+              for fn, tool in jobs:
+                  if os.path.exists("scan-reports/"+fn):
+                      (osv if fn.startswith("osv") else trivy if fn.startswith("trivy") else gitleaks)(fn, tool)
+          except Exception as e:
+              warnings.append("report parsing failed for some inputs: {!r}".format(e))
+          try:
+              rows.sort(key=lambda r: (SEV.get(r[0],9), r[1], r[2]))
+              tools = sorted({r[1] for r in rows})
+              md = ["# Security scan report","","## Severity summary","","| Tool | CRITICAL | HIGH | MEDIUM | LOW | UNKNOWN |","|---|---|---|---|---|---|"]
+              for t in tools:
+                  c = {s: sum(1 for r in rows if r[1]==t and r[0]==s) for s in SEV}
+                  md.append("| {} | {} | {} | {} | {} | {} |".format(t, c["CRITICAL"], c["HIGH"], c["MEDIUM"], c["LOW"], c["UNKNOWN"]))
+              md += ["","## Findings by package","","| Severity | Tool | ID | Package / location | Installed | Fixed | Link |","|---|---|---|---|---|---|---|"]
+              for sev,t,vid,pkg,ver,fixed,ref in rows:
+                  md.append("| {} | {} | {} | {} | {} | {} | {} |".format(sev,t,vid,pkg,ver,fixed,ref))
+              md += ["","_Source JSON files in this artifact: osv-python.json, osv-frontend.json, trivy-image.json, osv-sbom.json, gitleaks.json, image.cdx.json, sbom.json._"]
+              if warnings:
+                  md += ["","_Aggregation warnings: " + "; ".join(warnings) + "_"]
+              open("scan-reports/00-security-report.md","w").write("\n".join(md))
+              open("scan-reports/00-security-summary.txt","w").write("\n".join(l for l in md if l.startswith(("| Tool","| OSV","| Trivy","| Gitleaks"))))
+          except Exception as e:
+              # Last resort: always leave a report behind, never a crash.
+              open("scan-reports/00-security-report.md","w").write(
+                  "# Security scan report\n\n_Report generation failed: {!r}_\n".format(e))
+              open("scan-reports/00-security-summary.txt","w").write("")
           PY
 
       - name: Trivy HTML report
