@@ -58,6 +58,25 @@ _ARCHIVE_SCAN_PROGRESS = {}
 # repo_id -> {'running', 'kind', 'started', 'exit_code', 'output': [line,...]}.
 _MAINT_RUNS = {}
 
+# borg check --repair prints a scary interactive confirmation prompt to stdout
+# before it reads 'YES' from stdin. We answer it automatically, so those lines
+# are noise to the user in the maintenance dialog; drop them (case-insensitive
+# substring match on the stripped line) while keeping real errors/progress.
+_MAINT_PROMPT_FRAGMENTS = (
+    'this is a potentially dangerous function',
+    'check --repair might lead to data loss',
+    'be very careful',
+    "type 'yes' if you understand this and want to continue",
+    'cancelled by user',
+)
+
+
+def _is_maintenance_prompt_line(line):
+    """True if a captured borg output line is part of the confirmation prompt
+    (or its abort message) that we already answered automatically."""
+    stripped = line.strip().lower()
+    return any(frag in stripped for frag in _MAINT_PROMPT_FRAGMENTS)
+
 handler = RotatingFileHandler(
     os.path.join(log_dir, 'web_server.log'),
     maxBytes    = 5 * 1024 * 1024,  # 5 MB
@@ -449,7 +468,9 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
             )
             # `borg check --repair` requires typing 'YES' at a danger prompt;
             # supply it so the run is non-interactive (plain `borg check` does
-            # not read stdin). Leave the pipe open until the prompt is read.
+            # not read stdin). Write YES and close the pipe: borg reads the
+            # answer from stdin, and EOF afterwards means it can never hang on
+            # (or abort for lack of) a later prompt.
             try:
                 proc.stdin.write('YES\n')
                 proc.stdin.flush()
@@ -457,6 +478,8 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 pass
             finally:
                 proc.stdin.close()
+            if kind == 'repair':
+                run['output'].append('Repair confirmation acknowledged automatically.')
             # Read incrementally: borg prints check/repair progress with \r
             # and no newline, so a line-by-line reader would block forever.
             buf = ''
@@ -469,12 +492,12 @@ class JogoborgHTTPHandler(BaseHTTPRequestHandler):
                 buf = parts.pop()
                 for ln in parts:
                     ln = ln.rstrip('\r').strip()
-                    if ln:
+                    if ln and not _is_maintenance_prompt_line(ln):
                         run['output'].append(ln)
                         if len(run['output']) > 500:
                             run['output'] = run['output'][-500:]
             tail = buf.rstrip('\r').strip()
-            if tail:
+            if tail and not _is_maintenance_prompt_line(tail):
                 run['output'].append(tail)
                 if len(run['output']) > 500:
                     run['output'] = run['output'][-500:]
