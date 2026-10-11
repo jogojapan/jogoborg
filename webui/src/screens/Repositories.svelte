@@ -21,7 +21,7 @@
   let unlocked = $state(false);
   let showNew = $state(false);
   let showKeyField = $state(false);
-  let remember = $state(true);
+  let remember = $state(false);
   let browse = $state<{
     repoId: number;
     repoName: string;
