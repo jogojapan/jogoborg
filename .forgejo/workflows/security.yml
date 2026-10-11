@@ -24,7 +24,7 @@ jobs:
       SCAN_IMAGE: jogoborg:ci
       SCAN_THRESHOLD: high
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install scanners (host runner, not the image)
         run: |
