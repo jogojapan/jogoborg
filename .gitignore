@@ -60,6 +60,7 @@ venv/**
 
 # Security scan reports
 scan-reports/
+00-security-report.md
 *.sarif
 sbom*.json
 
