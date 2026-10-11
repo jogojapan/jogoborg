@@ -1,0 +1,81 @@
+name: release
+
+# Publish the Jogoborg Docker image to the Forgejo container registry
+# (git.chobycat.com/<owner>/jogoborg). Triggered ONLY on tag pushes; the git
+# tag becomes the published image tag and the GIT_TAG baked into the web UI.
+#   - Any tag  -> pushes <tag>
+#   - Stable tag (no 'rc' after the micro version, hyphenated or not)
+#              -> ALSO pushes :latest (the newest tagged release)
+#   - RC tag (0.12.0rc1 / 0.12.0-rc1 / v2.0.0-rc2) -> pushes <tag> only.
+#
+# Requires a `write:package` PAT (created with "All" repo access; specific-repo
+# tokens can't carry package scope) stored as the Actions secret REGISTRY_TOKEN.
+# The publish is GATED on `make scan` (gitleaks + trivy HIGH/CRITICAL), so only
+# scanned-clean images are pushed. Build+scan+push are one job so the exact
+# image that was scanned is the one published.
+on:
+  push:
+    tags:
+      - '*'          # any tag triggers a release; narrow to 'v*' / '0.*' if you prefer
+
+jobs:
+  publish:
+    runs-on: ubuntu
+    concurrency: release-${{ github.ref }}
+    env:
+      REGISTRY: git.chobycat.com
+      IMAGE: git.chobycat.com/${{ github.repository }}
+      SCAN_IMAGE: jogoborg:publish
+      REGISTRY_USER: ${{ github.repository_owner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install scanners (host runner, not the image)
+        run: |
+          set -euxo pipefail
+          mkdir -p /opt/scan && cd /opt/scan
+          curl -sSfL -o osv-scanner \
+            https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64
+          chmod +x osv-scanner
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /opt/scan
+          # gitleaks' linux asset is VERSIONED (gitleaks_<ver>_linux_x64.tar.gz)
+          # so the latest/download URL 404s; resolve it via the release API.
+          curl -sSfL -o gitleaks.tar.gz "$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest \
+            | python3 -c "import sys,json; print([a['browser_download_url'] for a in json.load(sys.stdin)['assets'] if a['name'].endswith('linux_x64.tar.gz')][0])")"
+          tar -xzf gitleaks.tar.gz -C /opt/scan
+          echo "/opt/scan" >> "$GITHUB_PATH"
+
+      - name: Build image (bake tag + commit into the UI)
+        run: |
+          set -euxo pipefail
+          docker build -t "${SCAN_IMAGE}" \
+            --build-arg GIT_TAG="${{ github.ref_name }}" \
+            --build-arg GIT_COMMIT="$(git rev-parse --short=10 HEAD)" \
+            --build-arg BUILD_DATE="$(date -Is)" .
+
+      - name: Security gate (locks, secrets, image HIGH/CRITICAL)
+        # scan-secrets (gitleaks) and scan-image (trivy) exit 1 on findings, so
+        # this aborts before the push steps below run.
+        run: make -C local_test scan
+
+      - name: Log in to Forgejo container registry
+        run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
+
+      - name: Tag + push (<tag>; + :latest for non-RC)
+        run: |
+          set -euxo pipefail
+          TAG="${GITHUB_REF_NAME,,}"            # lowercase (registry is case-insensitive)
+          docker tag "${SCAN_IMAGE}" "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:${TAG}"
+          # Push :latest only for stable tags (no 'rc' before the end, with or
+          # without a hyphen: 0.12.0rc1, 0.12.0-rc1, v2.0.0-rc2 are all RC).
+          if ! echo "${TAG}" | grep -qiE 'rc[0-9]*$'; then
+            docker tag "${SCAN_IMAGE}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          else
+            echo "rc tag '${TAG}' - skipping :latest"
+          fi
