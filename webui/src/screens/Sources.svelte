@@ -12,9 +12,9 @@
   const pathHistory = $state<string[]>(['/sourcespace']);
 
   // per-path size request state
-  const sizes = $state(new Map<string, string>());
+  let sizes = $state(new Map<string, string>());
   // paths with an in-flight size request
-  const pendingSizes = $state(new Set<string>());
+  let pendingSizes = $state(new Set<string>());
 
   async function load() {
     loading = true;
