@@ -26,7 +26,7 @@ jobs:
       REGISTRY: git.chobycat.com
       IMAGE: git.chobycat.com/${{ github.repository }}
       SCAN_IMAGE: jogoborg:publish
-      REGISTRY_USER: ${{ github.repository_owner }}
+      REGISTRY_USER: ${{ vars.REGISTRY_USER }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,7 +63,12 @@ jobs:
         run: make -C local_test scan
 
       - name: Log in to Forgejo container registry
-        run: echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
+        run: |
+          set -euo pipefail
+          # REGISTRY_USER comes from the repo variable of the same name; fall
+          # back to the repository owner (correct when the owner made the PAT).
+          export REGISTRY_USER="${REGISTRY_USER:-${{ github.repository_owner }}}"
+          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
 
       - name: Tag + push (<tag>; + :latest for non-RC)
         run: |
