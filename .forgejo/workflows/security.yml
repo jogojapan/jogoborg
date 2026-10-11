@@ -20,9 +20,6 @@ on:
 jobs:
   scan:
     runs-on: ubuntu
-    permissions:
-      contents: read
-      statuses: write
     env:
       SCAN_IMAGE: jogoborg:ci
       SCAN_THRESHOLD: high
