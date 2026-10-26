@@ -56,8 +56,10 @@ RUN apt-get update && \
 # The Docker CLI is a statically-linked Go binary; its bundled Go stdlib is
 # what image scanners flag, and Docker's apt packages are NOT all built with the
 # same Go:
-#   - Pin docker-ce-cli to 29.9.0 (the first release built with Go 1.26.9, which
-#     fixes two Go 1.26.8 stdlib CVEs; verified by inspecting the .deb).
+#   - Pin docker-ce-cli to 29.9.2 (built with Go 1.26.10, whose stdlib fixes
+#     CVE-2026-111943 found in 29.9.x's Go 1.26.9; verified by inspecting the
+#     .deb). Keep it pinned: Docker's apt packages are NOT all built with the
+#     same Go.
 #   - Add --no-install-recommends so the buildx/compose *plugins* are NOT pulled
 #     in: the latest docker-buildx-plugin (0.38.0) still bundles Go 1.26.8
 #     (verified), so installing them reintroduces the exact CVEs we are clearing.
@@ -65,7 +67,7 @@ RUN apt-get update && \
 RUN curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
     && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli=5:29.9.0-1~ubuntu.26.04~resolute \
+    && apt-get install -y --no-install-recommends docker-ce-cli=5:29.9.2-1~ubuntu.26.04~resolute \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
